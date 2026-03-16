@@ -14,6 +14,7 @@ setup(
         ('share/' + package_name, ['package.xml']),
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
+        (os.path.join('share', package_name, 'maps'), glob('maps/*')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -25,7 +26,8 @@ setup(
     entry_points={
         'console_scripts': [
             'throttle_interpolator = f1tenth_stack.throttle_interpolator:main',
-            'tf_publisher = f1tenth_stack.tf_publisher:main'
+            'tf_publisher = f1tenth_stack.tf_publisher:main',
+            'cmd_vel_to_ackermann = f1tenth_stack.cmd_vel_to_ackermann:main'
         ],
     },
 )
