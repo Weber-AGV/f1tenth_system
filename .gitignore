@@ -36,3 +36,6 @@
 
 # py
 *.pyc
+
+# Claude Code
+.claude/
