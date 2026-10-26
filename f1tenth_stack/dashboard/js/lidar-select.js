@@ -38,7 +38,7 @@ function toggleBeamSelect() {
 }
 
 /* ---- selection geometry ----
-   Pure, so verify_testing.mjs checks it with no DOM/websocket —
+   Pure, so tests/verify_testing.mjs checks it with no DOM/websocket —
    same reasoning as the radar geometry in connection.js. */
 
 // Inverse of polarToCanvas's angle term: a cursor offset from the

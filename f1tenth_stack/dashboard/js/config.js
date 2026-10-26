@@ -30,8 +30,8 @@ const CLIENT_LIMIT = 10;
    needs a different fix, so it gets its own banner. */
 const PUBLISH_STALE_MS = 8000;
 
-/* Battery lines signed off with the professor (issue #6,
-   docs/instructor-interview.md). Yellow below 11.6 V is a buffer: the
+/* Battery lines signed off with the professor (the
+   "Ranges" table in dashboard/README.md). Yellow below 11.6 V is a buffer: the
    pack still runs fine, get a replacement ready. Red below 11.1 V (3.7 V
    per cell) means replace the pack soon - a run-down test showed the
    pack falls off a cliff below about 10 V. The % estimate runs from
@@ -323,3 +323,13 @@ const rowEls = new Map();       // topic -> the row's live elements
 let tableKey = "";              // rebuild the table only when the
                                 // topic set itself changes
 
+/* ==========================================================
+   ROBOTS - the connect dropdown in the top bar
+   Each car's rosbridge. Change a name or address here; the
+   address box beside the dropdown also takes any other one.
+========================================================== */
+
+const ROBOTS = Array.from({ length: 12 }, (_, i) => ({
+  name: `F1-WSU-${i + 1}`,
+  url: `ws://192.168.1.${201 + i}:9090`
+}));

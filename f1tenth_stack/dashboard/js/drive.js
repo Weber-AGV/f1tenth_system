@@ -31,17 +31,31 @@
 const DRIVE_TOPIC = "/drive";
 const DRIVE_TYPE = "ackermann_msgs/msg/AckermannDriveStamped";
 
-const DRIVE_HZ = 20;
+/* 50 commands a second while held, about the physical controller's
+   own rate (/joy measured at ~48 Hz). It was 20: up to 50 ms between
+   a thumb moving and the car hearing it, and visibly coarser steps. */
+const DRIVE_HZ = 50;
 
-/* Speed ramps rather than jumps, so a key press or a flick of
-   the pad does not ask the VESC for a step change. Releasing is
-   NOT ramped — stop is always immediate.
+/* An input change (a key, a press, a drag) sends at once instead of
+   waiting for the next tick - a release is a stop, and it should not
+   wait. Pointer moves come faster than any useful rate, so at most one
+   extra command per this many ms. */
+const DRIVE_NOW_MIN_MS = 10;
 
-   5 m/s²: full normal speed (3 m/s) in 0.6 s. It was 2 m/s², which
-   took a quarter second just to command enough speed to get the car
-   rolling and 1.5 s to reach 3 m/s - it read as lag. */
-const DRIVE_ACCEL = 5.0;        // m/s per second
-const STEER_RATE = 2.5;         // rad per second
+/* Ramps. The keys are all or nothing, so their speed builds up rather
+   than asking the VESC for a jump from 0 to full in one message. The
+   pad and the thumb sticks are proportional, like the controller's
+   stick: your thumb is the ramp, and the page follows it almost at
+   once, only smoothing out jitter - the controller goes through no
+   ramp at all. Releasing is never ramped: stop is always immediate.
+
+   Was 5 m/s² and 2.5 rad/s for everything: 0.57 s to full speed and
+   0.13 s to full steering even on the pad, which read as lag next to
+   the controller. */
+const KEY_ACCEL = 8.0;          // m/s per second: 3 m/s in 0.38 s
+const KEY_STEER_RATE = 8.0;     // rad per second: full lock in about 40 ms
+const PAD_ACCEL = 20.0;         // m/s per second: 3 m/s in 0.15 s
+const PAD_STEER_RATE = 20.0;    // rad per second: full lock in about 17 ms
 
 /* zero-speed commands sent after release, so the last thing the
    mux saw is "stop" rather than whatever was held */
@@ -204,7 +218,7 @@ function setDriveNote(text) {
   $("driveNote").textContent = text;
 }
 
-/* ---------- the 20 Hz loop ---------- */
+/* ---------- the 50 Hz loop ---------- */
 
 function towards(current, target, maxStep) {
 
@@ -256,8 +270,11 @@ function driveTick() {
 
   if (active) {
 
-    cmdSpeed = towards(cmdSpeed, targetSpeed, DRIVE_ACCEL * dt);
-    cmdSteer = towards(cmdSteer, targetSteer, STEER_RATE * dt);
+    const accel = padHeld ? PAD_ACCEL : KEY_ACCEL;
+    const steerRate = padHeld ? PAD_STEER_RATE : KEY_STEER_RATE;
+
+    cmdSpeed = towards(cmdSpeed, targetSpeed, accel * dt);
+    cmdSteer = towards(cmdSteer, targetSteer, steerRate * dt);
 
     publishDrive(cmdSpeed, cmdSteer);
 
@@ -275,6 +292,11 @@ function driveTick() {
   }
 
   renderDriveReadout(active);
+}
+
+/* An input just changed: send now rather than at the next tick. */
+function driveNow() {
+  if (performance.now() - lastDriveTick >= DRIVE_NOW_MIN_MS) driveTick();
 }
 
 /* ---------- rendering ---------- */
@@ -521,6 +543,7 @@ $("drivePad").addEventListener("pointerdown", event => {
   padVec = padVector(event);
 
   placeKnob(padVec.x, padVec.y);
+  driveNow();
 });
 
 $("drivePad").addEventListener("pointermove", event => {
@@ -530,15 +553,19 @@ $("drivePad").addEventListener("pointermove", event => {
   padVec = padVector(event);
 
   placeKnob(padVec.x, padVec.y);
+  driveNow();
 });
 
 ["pointerup", "pointercancel", "lostpointercapture"].forEach(type =>
   $("drivePad").addEventListener(type, () => {
 
+    const was = padHeld;
+
     padHeld = false;
     padVec = { x: 0, y: 0 };
 
     placeKnob(0, 0);
+    if (was) driveNow();
   })
 );
 
@@ -571,12 +598,17 @@ window.addEventListener("keydown", event => {
 
   if (driveArmed && DRIVE_KEYS.has(key)) {
     event.preventDefault();
-    driveKeys.add(key);
+
+    /* the browser repeats a held key; only the first press is news */
+    if (!driveKeys.has(key)) {
+      driveKeys.add(key);
+      driveNow();
+    }
   }
 });
 
 window.addEventListener("keyup", event => {
-  driveKeys.delete(event.key.toLowerCase());
+  if (driveKeys.delete(event.key.toLowerCase())) driveNow();
 });
 
 /* ---------- everything that must stop the car ---------- */

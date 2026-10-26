@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
+# MIT License
+
+# Copyright (c) 2026 WSU F1TENTH
+
 # MJPEG proxy in front of the GStreamer tcpserversink started by
-# start_diagnostics.sh or bringup_launch.py. Browsers can't speak the raw
+# bringup_launch.py. Browsers can't speak the raw
 # multipart TCP stream directly; this relays it as a proper HTTP response.
 #
 # Newest frame only. Relaying every frame in order meant that whenever a
@@ -33,8 +37,11 @@ _frames_lock = threading.Lock()
 
 
 def camera_stats(now):
-    """Frames per second over the last 2 s (the best open stream) and seconds
-    since the last frame. None for both while nobody is watching."""
+    """
+    Return (fps, seconds since the last frame) for the best open stream.
+
+    fps is counted over the last 2 s. None for both while nobody is watching.
+    """
     with _frames_lock:
         viewers = [list(times) for times in _frames.values()]
     fps = max((sum(1 for t in times if now - t <= 2.0) / 2.0 for times in viewers),
@@ -45,10 +52,13 @@ def camera_stats(now):
 
 
 def split_frames(buf):
-    """Whole multipart parts in buf, and the rest still being received.
-    A part runs from one boundary to the next, boundary included, so each
-    is sent exactly as GStreamer wrote it. Bytes before the first
-    boundary belong to no frame and are dropped."""
+    """
+    Split buf into whole multipart parts and the rest still being received.
+
+    A part runs from one boundary to the next, boundary included, so each is
+    sent exactly as GStreamer wrote it. Bytes before the first boundary belong
+    to no frame and are dropped.
+    """
     start = buf.find(BOUNDARY)
     if start < 0:
         # keep a tail long enough to hold a boundary split across reads
@@ -194,7 +204,7 @@ class CameraHandler(BaseHTTPRequestHandler):
 
 
 def self_test():
-    """The frame counting, with no camera: python3 camera_http.py --self-test"""
+    """Check the frame counting with no camera: python3 camera_http.py --self-test."""
     now = time.monotonic()
     assert camera_stats(now) == {"viewers": 0, "fps": None, "last_frame_s": None}
     _frames[1] = collections.deque(now - 1.5 + i / 30 for i in range(45))

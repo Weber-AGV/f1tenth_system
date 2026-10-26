@@ -353,6 +353,38 @@ $("wsUrl").value =
 $("robotIp").textContent =
   location.hostname || "unknown";
 
+/* Robot dropdown: a car by name fills its address and connects. The
+   address box stays editable; an address that is not one of the
+   cars shows as "Custom address". */
+$("robotPick").innerHTML =
+  ROBOTS.map((robot, i) =>
+    `<option value="${i}">${escapeHtml(robot.name)}</option>`).join("") +
+  '<option value="custom">Other…</option>';
+
+function syncRobotPick() {
+  const url = $("wsUrl").value.trim().replace(/\/+$/, "");
+  const i = ROBOTS.findIndex(robot => robot.url === url);
+  $("robotPick").value = i >= 0 ? String(i) : "custom";
+  $("robotPick").parentElement.title =
+    i >= 0 ? `${ROBOTS[i].name} · ${ROBOTS[i].url}` : "Pick a robot to connect to";
+}
+
+$("robotPick").addEventListener("change", () => {
+
+  if ($("robotPick").value === "custom") {
+    $("wsUrl").focus();
+    $("wsUrl").select();
+    return;
+  }
+
+  $("wsUrl").value = ROBOTS[Number($("robotPick").value)].url;
+  $("connForm").requestSubmit();
+});
+
+$("wsUrl").addEventListener("input", syncRobotPick);
+
+syncRobotPick();
+
 /* Same reasoning as $("wsUrl") above, and the same bug fixed the
    same way: this used to be a hardcoded robot #2 IP
    (192.168.1.202) baked into the HTML, so the camera card was

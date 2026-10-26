@@ -194,7 +194,7 @@ async function runJoyCheck() {
         ? error.message +
           "\n\nsystem_diagnostics.py is not running, or is an " +
           "older copy without the service.\n" +
-          "On the robot:  ./start_diagnostics.sh"
+          "On the robot, restart bringup:  ros2 launch f1tenth_stack bringup_launch.py"
         : "check failed: " + error.message;
 
   } finally {

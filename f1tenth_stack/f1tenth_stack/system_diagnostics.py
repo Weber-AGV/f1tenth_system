@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Publish OS-level robot health as ROS diagnostics.
+# MIT License
+
+# Copyright (c) 2026 WSU F1TENTH
+
+"""
+Publish OS-level robot health as ROS diagnostics.
 
 The problem this solves: CPU load, temperatures, disk, network, and USB device
 state are NOT in ROS. Nothing publishes them, so rosbridge cannot carry them and
@@ -50,12 +55,14 @@ except ImportError:
 
 OK, WARN, ERROR, STALE = 0, 1, 2, 3
 
-# Thresholds signed off with the professor in issue #6; the basis for each is
-# in docs/instructor-interview.md. Measured idle values are noted so a change
-# can be checked against them. The VESC FET range is judged in the page
-# (FET_WARN / FET_ERR in the page's config.js), the CPU range inside cpu().
-TJ_WARN, TJ_ERR = 70.0, 85.0        # board temperature, C. Idle about 50 C; the board
-                                    # throttles at 70 and 99 C and shuts down at 104.5 C
+# Thresholds signed off with the professor; the basis for each is in
+# dashboard/README.md ("Ranges: what is green, yellow and red"). Measured idle
+# values are noted so a change can be checked against them. The VESC FET range is
+# judged in the page (FET_WARN / FET_ERR in the page's config.js), the CPU range
+# inside cpu().
+# Board temperature, C. Idle about 50 C; the board throttles at 70 and 99 C and
+# shuts down at 104.5 C.
+TJ_WARN, TJ_ERR = 70.0, 85.0
 MEM_WARN, MEM_ERR = 20.0, 10.0      # percent available. Idle: 63 to 80 %
 DISK_WARN, DISK_ERR = 85.0, 95.0    # percent used. Measured: 4 % on a 915 GB NVMe
 GPU_WARN = 95.0                     # percent busy, held for GPU_SUSTAIN_S seconds. No
@@ -66,7 +73,8 @@ SLOW_PERIOD = 10.0                  # seconds between expensive probes
 
 
 def read(path, default=None):
-    """Read a sysfs file, or return `default`.
+    """
+    Read a sysfs file, or return `default`.
 
     `except OSError` is NOT enough. A sysfs file that returns EAGAIN (the Jetson's
     cv0/1/2 thermal zones do this, transiently, and the set that fails rotates)
@@ -92,7 +100,8 @@ def run(cmd, timeout=4):
 
 
 def probe(cmd, timeout=8):
-    """Like run(), but the caller can tell "tool missing" from "printed nothing".
+    """
+    Like run(), but the caller can tell "tool missing" from "printed nothing".
 
     joy_enumerate_devices printing zero rows is the whole signal we are after, so
     an absent `ros2` binary must never be allowed to look like zero joysticks.
@@ -133,10 +142,12 @@ def find_gpu_files():
 
 
 def parse_gr3d(line):
-    """tegrastats' GPU field -> (busy %, MHz or None), or None if absent.
+    """
+    Parse tegrastats' GPU field into (busy %, MHz or None), or None if absent.
 
     Seen as `GR3D_FREQ 0%@305` (Nano), `GR3D_FREQ 0%@[305]` (Xavier) and
-    `GR3D_FREQ 0%@[305,0]` or bare `GR3D_FREQ 0%` (Orin)."""
+    `GR3D_FREQ 0%@[305,0]` or bare `GR3D_FREQ 0%` (Orin).
+    """
     m = re.search(r"GR3D_FREQ (\d+)%(?:@\[?(\d+))?", line or "")
     if not m:
         return None
@@ -144,10 +155,12 @@ def parse_gr3d(line):
 
 
 def cpu_busy_pct(prev, cur):
-    """Busy % between two /proc/stat `cpu` lines' counters, or None.
+    """
+    Return busy % between two /proc/stat `cpu` lines' counters, or None.
 
     iowait counts as idle: a core waiting on the NVMe is not doing work, and
-    counting it as busy makes a log flush look like a CPU spike."""
+    counting it as busy makes a log flush look like a CPU spike.
+    """
     if not prev or not cur or len(prev) < 5 or len(cur) < 5:
         return None
     idle = (cur[3] + cur[4]) - (prev[3] + prev[4])
@@ -176,7 +189,7 @@ ESTOP_HZ = 50.0
 
 
 def parse_pgrep(out, own_pid):
-    """PIDs from `pgrep -f` output, never our own (pgrep -f can match it)."""
+    """Return the PIDs in `pgrep -f` output, never our own (pgrep -f can match it)."""
     pids = []
     for token in (out or "").split():
         if token.isdigit() and int(token) != own_pid:
@@ -195,8 +208,12 @@ PAD_NAME_RE = re.compile(r"controller|dualshock|dualsense|gamepad", re.IGNORECAS
 
 
 def bt_power(show_out):
-    """Bluetooth adapter state from `bluetoothctl show`. Empty output means the
-    tool failed or timed out, which is not the same as the radio being off."""
+    """
+    Read the Bluetooth adapter state from `bluetoothctl show`.
+
+    Empty output means the tool failed or timed out, which is not the same as
+    the radio being off.
+    """
     if "Powered: yes" in show_out:
         return "on"
     if "Powered: no" in show_out:
@@ -205,9 +222,12 @@ def bt_power(show_out):
 
 
 def parse_wifi(iw_link, ping_out):
-    """Wi-Fi quality (#6) from `iw dev <wl> link` and a short ping to the
-    gateway: signal in dBm, packet loss in %, average round trip in ms. A value
-    that could not be read is left out, never guessed."""
+    """
+    Read Wi-Fi quality from `iw dev <wl> link` and a short ping to the gateway.
+
+    Signal in dBm, packet loss in %, average round trip in ms. A value that
+    could not be read is left out, never guessed.
+    """
     out = {}
     m = re.search(r"signal:\s*(-?\d+)\s*dBm", iw_link or "")
     if m:
@@ -232,17 +252,17 @@ def parse_wifi(iw_link, ping_out):
 
 DRIVE_QUIET_S = 0.3
 DRIVE_STOP_COUNT = 5                # zeros sent, one per watchdog tick (20 Hz)
-DRIVE_WATCHDOG_FRAME = "drive_watchdog"   # header.frame_id, so the page and
-                                          # this node can tell the zeros apart
+# header.frame_id, so the page and this node can tell the zeros apart
+DRIVE_WATCHDOG_FRAME = "drive_watchdog"
 
 
 def drive_went_quiet(moving, last_at, now, quiet_s=DRIVE_QUIET_S):
-    """True when /drive was commanding motion and has been silent too long."""
+    """Return True when /drive was commanding motion and has been silent too long."""
     return moving and now - last_at > quiet_s
 
 
 def deadman_held(buttons, age_s):
-    """True if a fresh /joy message has L1 or R1 down. Silent /joy = no pad."""
+    """Return True if a fresh /joy message has L1 or R1 down; silent /joy = no pad."""
     if buttons is None or age_s > JOY_FRESH_S:
         return False
     return any(i < len(buttons) and buttons[i] == 1 for i in JOY_DEADMEN)
@@ -256,7 +276,8 @@ def connected_pads(devices_out, info_for):
 
 
 def parse_joy_devices(out):
-    """Pull "<id>: <name>" out of joy_enumerate_devices' table.
+    """
+    Pull "<id>: <name>" out of joy_enumerate_devices' table.
 
     Confirmed on robot #2, 2026-09-16 - colon-separated, one header row, one rule:
 
@@ -283,7 +304,8 @@ def in_input_group():
 
 
 def joy_verdict(rc, out, devices, connected, in_group):
-    """Turn the joystick evidence into (usable_by_ros, human-readable report).
+    """
+    Turn the joystick evidence into (usable_by_ros, human-readable report).
 
     Pure so it can be asserted without a robot: `python3 system_diagnostics.py
     --self-test`. The interesting row is (0 devices, pad connected) - the seat-ACL
@@ -421,7 +443,8 @@ class SystemDiagnostics(Node):
     # ---------- on-demand checks, called from the dashboard ----------
 
     def joystick_check(self, _request, response):
-        """Answer "why is /joy silent?" - the one question /joy itself cannot.
+        """
+        Answer "why is /joy silent?" - the one question /joy itself cannot.
 
         A silent /joy has three causes that look identical on the topic: no pad,
         a sleeping pad, and a pad that ROS has no permission to open. Only
@@ -451,8 +474,12 @@ class SystemDiagnostics(Node):
         self.joy_at = time.time()
 
     def controller_disconnect(self, _request, response):
-        """Drop the pad's Bluetooth link. Refused while L1/R1 is held, unless the
-        e-stop is on (then nothing the pad sends can move the car)."""
+        """
+        Drop the pad's Bluetooth link.
+
+        Refused while L1/R1 is held, unless the e-stop is on (then nothing the
+        pad sends can move the car).
+        """
         if not self.estop_active and deadman_held(self.joy_buttons,
                                                   time.time() - self.joy_at):
             response.success = False
@@ -509,9 +536,13 @@ class SystemDiagnostics(Node):
         return response
 
     def emergency_release(self, _request, response):
-        """Let the drive chain run again. Refused while L1/R1 is held, here as
-        well as on the page: a second tab or a direct service call skips the
-        page's check, and the car would resume straight into a live command."""
+        """
+        Let the drive chain run again.
+
+        Refused while L1/R1 is held, here as well as on the page: a second tab
+        or a direct service call skips the page's check, and the car would
+        resume straight into a live command.
+        """
         if not self.estop_active:
             response.success, response.message = True, "emergency stop was not active"
             return response
@@ -640,8 +671,12 @@ class SystemDiagnostics(Node):
         return status("system: CPU", lvl, f"load {l1:.2f} over {self.ncores} cores", vals)
 
     def gpu(self):
-        """Jetson GPU busy %. sysfs first (1 Hz, no subprocess); tegrastats'
-        GR3D_FREQ from the slow loop only if the driver file is not there."""
+        """
+        Report the Jetson GPU's busy %.
+
+        sysfs first (1 Hz, no subprocess); tegrastats' GR3D_FREQ from the slow
+        loop only if the driver file is not there.
+        """
         vals, pct, source = [], None, None
         raw = read(self.gpu_load_path) if self.gpu_load_path else None
         if raw is not None and raw.isdigit():
@@ -698,8 +733,12 @@ class SystemDiagnostics(Node):
                        ("used %", f"{pct:.1f}")])
 
     def power(self):
-        """S-02. Uptime is the brownout detector: if it goes backwards between
-        two samples the board rebooted, and on this car that means the pack."""
+        """
+        Report uptime, the brownout detector (S-02).
+
+        If it goes backwards between two samples the board rebooted, and on
+        this car that means the pack.
+        """
         up = float((read("/proc/uptime") or "0").split()[0])
         vals = [("uptime", f"{up:.0f} s")]
         lvl, msg = OK, f"up {up:.0f} s"
@@ -719,8 +758,12 @@ class SystemDiagnostics(Node):
         return status("system: Power", lvl, msg, vals)
 
     def vesc_device(self):
-        """S-09. The serial node existing is separate from the topic flowing;
-        this catches an unplugged VESC before the topic even goes silent."""
+        """
+        Check the VESC's serial device node exists (S-09).
+
+        That is separate from the topic flowing; this catches an unplugged VESC
+        before the topic even goes silent.
+        """
         path = "/dev/sensors/vesc"
         if os.path.exists(path):
             return status("system: VESC device", OK, "present",
@@ -776,7 +819,8 @@ class SystemDiagnostics(Node):
         # fault. A short burst with a hard timeout, so it never stalls the loop.
         wl = next((n for n in nets if n.startswith("wl")), None)
         if wl:
-            gw = re.search(r"default via (\S+)", run(["ip", "route", "show", "default"], timeout=3))
+            route = run(["ip", "route", "show", "default"], timeout=3)
+            gw = re.search(r"default via (\S+)", route)
             ping_gw = run(["ping", "-c", "5", "-i", "0.2", "-W", "1", gw.group(1)],
                           timeout=5) if gw else ""
             out["wifi"] = parse_wifi(run(["iw", "dev", wl, "link"], timeout=3), ping_gw)

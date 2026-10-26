@@ -1,0 +1,416 @@
+/* ==================================================================
+   BASE.CSS
+   Base: colour tokens (light and dark), reset, page frame, icons, shared buttons, cards and text helpers. Loaded first.
+
+   Sections:
+      1. Colour tokens (light and dark)
+      2. Reset and page frame
+      3. Icons
+      4. Cards shared by every tab
+      5. Buttons and keyboard focus
+      6. Text helpers
+      7. Shared by several areas
+   ================================================================== */
+
+/* ------------------------------------------------------------------
+   1. COLOUR TOKENS (LIGHT AND DARK)
+   ------------------------------------------------------------------ */
+
+:root {
+  color-scheme: light;
+
+  --bg: #ffffff;
+  --panel: #ffffff;
+  --panel-soft: #f8f9fa;
+  --surface-3: #e6e6e6;
+  --border: #d9d9d9;
+  --border-soft: #eeeeee;
+  --border-strong: #b5b5b5;
+  --text: #151515;
+  --text-2: #505050;
+  --muted: #666666;
+  --link: #0b63c5;
+
+  --healthy: #27b83f;
+  --healthy-soft: #eaf8ed;
+
+  --degraded: #ffc400;
+  --degraded-soft: #fff3b6;
+
+  --failed: #ef382b;
+  --failed-soft: #ffd1cf;
+
+  --unknown: #a9a9a9;
+  --unknown-soft: #eeeeee;
+
+  --orange: #ff7900;
+
+  /* text-safe status shades, used by render code */
+  --ok-ink: #1c9a31;
+  --warn-ink: #b58600;
+  --bad-ink: #d92d20;
+  --unk-ink: #8a8a8a;
+  --ink-2: #555;
+}
+
+/* DARK — same layout and accents, only the neutrals and the soft
+   status fills change. Picked with the toggle in the top bar
+   (remembered per browser); until then the OS setting decides. */
+:root[data-theme="dark"] {
+  color-scheme: dark;
+
+  --bg: #111316;
+  --panel: #1a1d21;
+  --panel-soft: #22262b;
+  --surface-3: #2c3137;
+  --border: #33383f;
+  --border-soft: #2a2e34;
+  --border-strong: #4a5059;
+  --text: #eef0f2;
+  --text-2: #c3c8ce;
+  --muted: #9aa1a9;
+  --link: #6ea8ff;
+
+  --healthy-soft: #15301d;
+  --degraded-soft: #3a3110;
+  --failed-soft: #3d1a19;
+  --unknown-soft: #2a2e33;
+
+  --ok-ink: #3ecf5a;
+  --warn-ink: #f2c230;
+  --bad-ink: #ff6b60;
+  --unk-ink: #a0a6ad;
+  --ink-2: #c3c8ce;
+}
+
+@media (prefers-color-scheme: dark) {
+
+  :root:not([data-theme]) {
+    color-scheme: dark;
+
+    --bg: #111316;
+    --panel: #1a1d21;
+    --panel-soft: #22262b;
+    --surface-3: #2c3137;
+    --border: #33383f;
+    --border-soft: #2a2e34;
+    --border-strong: #4a5059;
+    --text: #eef0f2;
+    --text-2: #c3c8ce;
+    --muted: #9aa1a9;
+    --link: #6ea8ff;
+
+    --healthy-soft: #15301d;
+    --degraded-soft: #3a3110;
+    --failed-soft: #3d1a19;
+    --unknown-soft: #2a2e33;
+
+    --ok-ink: #3ecf5a;
+    --warn-ink: #f2c230;
+    --bad-ink: #ff6b60;
+    --unk-ink: #a0a6ad;
+    --ink-2: #c3c8ce;
+  }
+}
+
+/* ------------------------------------------------------------------
+   2. RESET AND PAGE FRAME
+   ------------------------------------------------------------------ */
+
+* {
+  box-sizing: border-box;
+}
+
+/* hidden always wins, whatever display a component sets */
+[hidden] {
+  display: none !important;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: Arial, Helvetica, sans-serif;
+}
+
+button,
+input {
+  font: inherit;
+}
+
+.page {
+  min-height: 100vh;
+  padding: 22px 28px 55px;
+}
+
+@media (max-width: 800px) {
+
+  .page {
+    padding: 17px 14px 70px;
+  }
+
+  body {
+    overflow-x: hidden;
+  }
+
+  .page {
+    padding-bottom: 24px;
+  }
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (max-height: 500px) {
+
+  .page {
+    padding-bottom: 24px;
+  }
+}
+
+button:focus-visible,
+input:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+/* ------------------------------------------------------------------
+   3. ICONS
+   ------------------------------------------------------------------ */
+
+.ic {
+  display: inline-block;
+  flex: none;
+  width: 1.15em;
+  height: 1.15em;
+  vertical-align: -0.2em;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* ------------------------------------------------------------------
+   4. CARDS SHARED BY EVERY TAB
+   ------------------------------------------------------------------ */
+
+.live-card {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 14px;
+  min-width: 0;
+}
+
+.live-card h2 {
+  margin: 0 0 12px;
+  font-size: 17px;
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: baseline;
+}
+
+.live-tag {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.side-card {
+  border: 1px solid var(--border);
+  border-radius: 19px;
+  padding: 15px;
+}
+
+.side-card.square {
+  border-radius: 4px;
+}
+
+.side-card h2 {
+  margin: 0 0 12px;
+  font-size: 20px;
+}
+
+.side-card h2.split-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+}
+
+@media (max-width: 800px) {
+
+  /* card headers: the title keeps its line, the tools wrap under it */
+  .live-card h2,
+  .side-card h2.split-head {
+    flex-wrap: wrap;
+    align-items: center;
+    row-gap: 8px;
+  }
+}
+
+/* ------------------------------------------------------------------
+   5. BUTTONS AND KEYBOARD FOCUS
+   ------------------------------------------------------------------ */
+
+/* the save link reuses the button styling, so it needs the bits
+   an <a> does not get for free */
+a.check-btn {
+  display: inline-block;
+  text-decoration: none;
+  color: inherit;
+}
+
+/* small secondary action in a card header (Full screen, Split,
+   Reconnect, Details): a real button, the same chip as Select beams */
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  min-height: 28px;
+  padding: 4px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1;
+  text-decoration: none;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.check-btn {
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 8px 14px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.check-btn:hover {
+  background: var(--panel-soft);
+}
+
+.check-btn:disabled {
+  opacity: .55;
+  cursor: progress;
+}
+
+.top-btn {
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  color: var(--text-2);
+  padding: 6px 13px;
+  border-radius: 8px;
+  cursor: pointer;
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  white-space: nowrap;
+}
+
+.top-btn:hover {
+  background: var(--panel-soft);
+}
+
+.top-btn:disabled {
+  opacity: .6;
+  cursor: progress;
+}
+
+kbd {
+  display: inline-block;
+  min-width: 20px;
+  padding: 1px 5px;
+  margin: 0 1px;
+  border: 1px solid var(--border-strong);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  font-family: monospace;
+  font-size: 11px;
+  text-align: center;
+  background: var(--panel-soft);
+  color: var(--text);
+}
+
+@media (max-width: 800px) {
+
+  .check-btn {
+    white-space: normal;
+  }
+
+  .link-btn {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+}
+
+.top-btn,
+.check-btn,
+.link-btn {
+  transition: background-color .15s ease, border-color .15s ease,
+              color .15s ease, transform .08s ease;
+}
+
+.link-btn:active,
+.check-btn:active:not(:disabled),
+.top-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* buttons that hold an icon and a word line them up */
+.link-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ------------------------------------------------------------------
+   6. TEXT HELPERS
+   ------------------------------------------------------------------ */
+
+.h3-note {
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.mono {
+  font-family: monospace;
+}
+
+.card-hint {
+  color: var(--muted);
+  font-size: 13px;
+  margin-top: 10px;
+}
+
+.side-card h2 .h3-note {
+  font-size: 13px;
+}
+
+/* ------------------------------------------------------------------
+   7. SHARED BY SEVERAL AREAS
+   ------------------------------------------------------------------ */
+
+a:focus-visible,
+summary:focus-visible {
+  outline: 2px solid var(--link);
+  outline-offset: 2px;
+}
+
+@media (pointer: coarse), (max-width: 900px) {
+
+  .layout-reset {
+    display: none;
+  }
+}

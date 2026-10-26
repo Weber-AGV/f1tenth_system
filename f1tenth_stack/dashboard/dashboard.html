@@ -15,7 +15,14 @@
   } catch (error) {}
 </script>
 
-<link rel="stylesheet" href="css/dashboard.css">
+<!-- One stylesheet per area of the page, loaded in this order (later
+     files may override earlier ones). css/README.md says what is where. -->
+<link rel="stylesheet" href="css/base.css">      <!-- colours, reset, icons, shared buttons -->
+<link rel="stylesheet" href="css/topbar.css">    <!-- top bar, emergency stop, status banner, tabs, footer -->
+<link rel="stylesheet" href="css/overview.css">  <!-- Overview tab, the LiDAR card and its radar panel -->
+<link rel="stylesheet" href="css/drive.css">     <!-- the Drive tab's own cards and the unlock dialogs -->
+<link rel="stylesheet" href="css/advanced.css">  <!-- Advanced tab -->
+<link rel="stylesheet" href="css/cockpit.css">   <!-- the driving view: Drive tab and full screen -->
 </head>
 
 <body>
@@ -32,11 +39,24 @@
       <strong id="connLabel">CONNECTING...</strong>
     </span>
 
-    <input id="wsUrl" spellcheck="false"
-           aria-label="rosbridge address"
-           title="rosbridge WebSocket address — press Enter or Connect">
+    <!-- one joined field: pick a car (ROBOTS in config.js), its address
+         fills in and stays editable for any other one, then Connect -->
+    <div class="conn-field">
+      <label class="conn-robot" title="Pick a robot to connect to">
+        <i data-icon="car"></i>
+        <select class="robot-pick" id="robotPick" aria-label="Robot"></select>
+        <i class="conn-caret" data-icon="chevronDown"></i>
+      </label>
 
-    <button class="top-btn" id="connectBtn" type="submit">Connect</button>
+      <label class="conn-addr">
+        <i data-icon="link"></i>
+        <input id="wsUrl" spellcheck="false"
+               aria-label="rosbridge address"
+               title="rosbridge WebSocket address — edit it, then press Enter or Connect">
+      </label>
+
+      <button class="conn-go" id="connectBtn" type="submit"><i data-icon="plug"></i><span>Connect</span></button>
+    </div>
 
     <!-- phones/tablets only: folds the bar down to status + tabs -->
     <button class="top-btn topbar-toggle" id="topbarToggle" type="button"
@@ -297,6 +317,9 @@
         <div class="stream-box" id="cameraBox">
           <img id="cameraImage" alt="Live camera stream" hidden>
 
+          <!-- while recording: travels with the picture to the Drive tab and full screen -->
+          <span class="rec-badge" id="recBadge" hidden><span class="rec-dot"></span>REC <span id="recTime">0:00</span></span>
+
           <div class="stream-message" id="camMessage">Not connected</div>
         </div>
       </div>
@@ -305,6 +328,7 @@
            the address is only for an unusual setup -->
       <div class="camera-controls">
         <span class="camera-source" id="cameraSource">Automatic · follows the robot</span>
+        <button class="check-btn record-btn" id="cameraRecordBtn" type="button" data-record></button>
         <button class="check-btn" id="cameraSnapBtn">Take Picture</button>
       </div>
 
@@ -331,7 +355,7 @@
       </div>
     </div>
 
-    <div class="live-card">
+    <div class="live-card lidar-card" data-view="lines">
       <h2>
         <span>LiDAR</span>
         <span class="live-tag" id="lidarTag">waiting</span>
@@ -349,6 +373,11 @@
         </div>
         <button type="button" class="select-toggle" data-beam-select aria-pressed="false"
                 title="Pick a range of beams by index, for your own test code"><i data-icon="crosshair"></i> Select beams</button>
+        <!-- Detailed only: the radar's sweep line -->
+        <button type="button" class="select-toggle sweep-toggle" data-sweep-toggle aria-pressed="true"
+                title="The radar's turning line, on or off"><i data-icon="radar"></i> Sweep</button>
+        <!-- the label and its steps wrap together -->
+        <div class="lidar-range-group">
         <span class="lidar-toolbar-label">Range (m)</span>
         <div class="range-switch" role="group" aria-label="LiDAR plot range" data-range-for="overview">
           <button type="button" data-lidar-range="auto">Auto</button>
@@ -358,6 +387,7 @@
           <button type="button" data-lidar-range="4">4</button>
           <button type="button" data-lidar-range="8">8</button>
           <button type="button" data-lidar-range="15">15</button>
+        </div>
         </div>
       </div>
 
@@ -419,12 +449,10 @@
       </div>
 
       <div class="lidar-legend" data-view="lines" aria-label="Colour key">
-        <span class="only-detailed"><i class="sw sw-near"></i>Very close (under 0.5 m)</span>
-        <span class="only-detailed"><i class="sw sw-close"></i>Close (under 1 m)</span>
-        <span class="only-detailed"><i class="sw sw-far"></i>Far away</span>
-        <span class="only-detailed"><i class="sw sw-free"></i>Open space</span>
-        <span class="only-detailed"><i class="sw sw-ghost"></i>Where things were 1 s ago</span>
-        <span class="only-detailed"><i class="sw sw-moved"></i>Moving toward the car</span>
+        <span class="only-detailed"><i class="sw sw-hit"></i>A LiDAR return</span>
+        <span class="only-detailed"><i class="sw sw-obj-warn"></i>Obstacle under 1 m</span>
+        <span class="only-detailed"><i class="sw sw-obj-danger"></i>Obstacle under 0.3 m</span>
+        <span class="only-detailed"><i class="sw sw-blindarea"></i>Rear blind area</span>
         <span class="only-lines"><i class="sw sw-line"></i>Green line: outline of everything the LiDAR sees</span>
         <span class="only-lines"><i class="sw sw-ring-near"></i>Red circle: very close (0.5 m)</span>
         <span class="only-lines"><i class="sw sw-ring-close"></i>Amber circle: close (1 m)</span>
@@ -432,7 +460,28 @@
       </div>
 
 
-      <!-- closest return in each direction, with the trend over ~1 s -->
+      <!-- DETAILED VIEW (radar.js): what is close, in words -->
+      <div class="radar-panel">
+        <div class="radar-banner none" id="radarBanner" role="status">WAITING FOR /scan</div>
+
+        <div class="radar-sub">Closest in each direction</div>
+        <ul class="radar-sectors" id="radarSectors"></ul>
+
+        <div class="radar-sub">Nearest objects</div>
+        <ol class="radar-objects" id="radarObjects"></ol>
+
+        <div class="radar-foot">
+          <span>Scan rate <b id="radarRate">—</b></span>
+          <span class="radar-legend-note">Danger &lt; 0.30 m · Warn &lt; 1.00 m</span>
+        </div>
+
+        <label class="radar-mask">
+          <span>Ignore angles (your own robot), degrees, + is left</span>
+          <input type="text" id="radarMask" spellcheck="false" placeholder="e.g. 120:135, -135:-120">
+        </label>
+      </div>
+
+      <!-- LINES VIEW: closest return in each direction, with the trend over ~1 s -->
       <div class="sector-grid">
         <div class="sector">
           <span class="sector-k">Ahead</span>
@@ -670,12 +719,10 @@
           </div>
 
           <div class="lidar-legend" data-view="lines" aria-label="Colour key">
-            <span class="only-detailed"><i class="sw sw-near"></i>Very close (under 0.5 m)</span>
-            <span class="only-detailed"><i class="sw sw-close"></i>Close (under 1 m)</span>
-            <span class="only-detailed"><i class="sw sw-far"></i>Far away</span>
-            <span class="only-detailed"><i class="sw sw-free"></i>Open space</span>
-            <span class="only-detailed"><i class="sw sw-ghost"></i>Where things were 1 s ago</span>
-            <span class="only-detailed"><i class="sw sw-moved"></i>Moving toward the car</span>
+            <span class="only-detailed"><i class="sw sw-hit"></i>A LiDAR return</span>
+            <span class="only-detailed"><i class="sw sw-obj-warn"></i>Obstacle under 1 m</span>
+            <span class="only-detailed"><i class="sw sw-obj-danger"></i>Obstacle under 0.3 m</span>
+            <span class="only-detailed"><i class="sw sw-blindarea"></i>Rear blind area</span>
         <span class="only-lines"><i class="sw sw-line"></i>Green line: outline of everything the LiDAR sees</span>
         <span class="only-lines"><i class="sw sw-ring-near"></i>Red circle: very close (0.5 m)</span>
         <span class="only-lines"><i class="sw sw-ring-close"></i>Amber circle: close (1 m)</span>
@@ -871,8 +918,8 @@
         <ul class="sys-list" id="sysList"></ul>
 
         <div class="card-hint card-body" id="sysHint" style="margin:0">
-          Waiting for system_diagnostics — start it on the robot with
-          <span class="mono">./start_diagnostics.sh</span>
+          Waiting for system_diagnostics — bringup starts it; restart bringup on the robot with
+          <span class="mono">ros2 launch f1tenth_stack bringup_launch.py</span>
         </div>
       </div>
 
@@ -1031,6 +1078,8 @@
       <span class="drive-state" id="cockpitState">DISARMED</span>
       <span class="viewer-health" id="cockpitHealth" data-health="unknown">UNKNOWN</span>
       <span class="hud-chip" id="cockpitBattery"><i data-icon="battery"></i> --.- V</span>
+      <!-- round trip to the car: every command pays about half of it -->
+      <span class="hud-chip latency-chip" id="cockpitLatency" hidden></span>
       <span class="hud-chip hud-fast" id="cockpitSpeedMode" hidden><i data-icon="alert"></i> HIGH SPEED</span>
       <span class="hud-chip hud-fast" id="cockpitSteerMode" hidden><i data-icon="alert"></i> FULL STEERING</span>
       <span class="hud-chip" id="cockpitPadChip"></span>
@@ -1062,6 +1111,9 @@
       <button class="top-btn cockpit-panel-toggle" id="cockpitPanelToggle" type="button"
               aria-expanded="false" aria-controls="cockpitPanel" title="Safety check and speed limits"><i data-icon="gauge"></i><span class="btn-lbl"> Limits</span></button>
 
+      <!-- records the camera to a video file (camera.js) -->
+      <button class="top-btn cockpit-record-btn" type="button" data-record></button>
+
       <!-- every "how it looks" option, in one place -->
       <button class="top-btn cockpit-settings-btn" id="cockpitSettingsBtn" type="button"
               aria-expanded="false" aria-controls="cockpitSettings" title="Layout and display settings"><i data-icon="sliders"></i><span class="btn-lbl"> Settings</span></button>
@@ -1072,7 +1124,7 @@
 
       <!-- one tap: tuck the bar away (the corner keeps E-stop and Show) -->
       <button class="top-btn cockpit-icon-btn" id="cockpitBarHideBtn" type="button"
-              aria-label="Hide the top bar" title="Hide the top bar (Show in the corner brings it back)"><i data-icon="chevronUp"></i></button>
+              aria-label="Hide the top bar" title="Hide the top bar (on a computer the essentials move to a side rail)"><i data-icon="chevronUp"></i></button>
 
       <!-- last, and set apart: always in the same corner -->
       <span class="cockpit-sep" aria-hidden="true"></span>
@@ -1089,6 +1141,41 @@
     <button class="estop-btn" id="cockpitMiniEstop" type="button"></button>
     <button class="top-btn" id="cockpitBarShow" type="button" title="Show the bar again"><i data-icon="chevronDown"></i> Show</button>
   </div>
+
+  <!-- SIDE RAIL (a computer, with the top bar hidden): the bars'
+       essentials in one narrow column at the side, so the picture gets
+       the whole height. Each button stands in for one in the bars;
+       Settings > Side rail picks the side. -->
+  <nav class="cockpit-rail" id="cockpitRail" aria-label="Driving essentials">
+    <span class="drive-state" id="railState">DISARMED</span>
+    <span class="viewer-health" id="railHealth" data-health="unknown">UNKNOWN</span>
+    <span class="rail-battery" id="railBattery"></span>
+    <span class="rail-battery latency-chip" id="railLatency" hidden></span>
+
+    <label class="rail-check" title="Area is clear / wheels are off the ground">
+      <input type="checkbox" id="railConfirm"> Area clear
+    </label>
+    <button class="top-btn rail-arm" id="railArm" type="button">Arm</button>
+    <button class="stop-btn rail-stop" id="railStop" type="button" title="Stop and disarm (Space)">STOP</button>
+
+    <!-- the speedometer moves here from the bottom bar -->
+    <div class="rail-speedo" id="railSpeedoSlot"></div>
+    <span class="rail-who" id="railWho"></span>
+
+    <div class="rail-group" role="group" aria-label="Panes">
+      <button class="top-btn rail-btn" type="button" data-pane-toggle="camera" title="Camera"><i data-icon="camera"></i><span>Camera</span></button>
+      <button class="top-btn rail-btn" type="button" data-pane-toggle="lidar" title="LiDAR"><i data-icon="radar"></i><span>LiDAR</span></button>
+      <button class="top-btn rail-btn" type="button" data-pane-toggle="controls" title="Controls"><i data-icon="joystick"></i><span>Controls</span></button>
+    </div>
+    <button class="top-btn rail-btn" type="button" data-record="short"></button>
+    <button class="top-btn rail-btn" id="railSettings" type="button" aria-controls="cockpitSettings" title="Settings"><i data-icon="sliders"></i><span>Settings</span></button>
+    <button class="top-btn rail-btn" id="railGoFull" type="button" title="Full screen (Esc to leave)"><i data-icon="maximize"></i><span>Full screen</span></button>
+    <button class="top-btn rail-btn" id="railExit" type="button" title="Leave full screen (Esc) - disarms"><i data-icon="x"></i><span>Exit</span></button>
+    <button class="top-btn rail-btn" id="railShow" type="button" title="Bring the top bar back"><i data-icon="chevronDown"></i><span>Show bar</span></button>
+
+    <span class="rail-fill"></span>
+    <button class="estop-btn rail-estop" id="railEstop" type="button"></button>
+  </nav>
 
   <div class="cockpit-view">
 
@@ -1122,10 +1209,22 @@
         <label class="cockpit-switch">
           <span class="cockpit-switch-text">
             <strong>Hide the top bar</strong>
-            <span>More picture. Emergency stop and Show stay in the corner.</span>
+            <span class="cs-desk-only">More picture: the essentials move to the side rail.</span>
+            <span class="cs-touch-only">More picture. Emergency stop and Show stay in the corner.</span>
           </span>
           <input type="checkbox" id="barHiddenToggle" role="switch">
         </label>
+
+        <div class="cockpit-switch cs-choice cs-desk-only">
+          <span class="cockpit-switch-text">
+            <strong>Side rail</strong>
+            <span>With the top bar hidden, the essentials go in a column on this side</span>
+          </span>
+          <div class="range-switch" role="group" aria-label="Side rail">
+            <button type="button" data-rail="left">Left</button>
+            <button type="button" data-rail="right">Right</button>
+          </div>
+        </div>
 
         <label class="cockpit-switch cs-touch-only">
           <span class="cockpit-switch-text">
@@ -1176,6 +1275,13 @@
             <button type="button" data-lidar-range="15">15</button>
           </div>
         </div>
+        <label class="cockpit-switch">
+          <span class="cockpit-switch-text">
+            <strong>Sweep line</strong>
+            <span>The turning line on the Detailed view</span>
+          </span>
+          <input type="checkbox" id="cockpitSweepToggle" role="switch" checked>
+        </label>
       </section>
 
       <section class="cs-group">
@@ -1259,6 +1365,8 @@
           <!-- a small window over the camera instead of a pane beside it -->
           <button class="pane-act" id="lidarFloatBtn" type="button"
                   title="Float the LiDAR over the camera (drag to move, corner to resize)"><i data-icon="split"></i> Float</button>
+          <button class="pane-hide" id="lidarHide" type="button"
+                  aria-label="Close the LiDAR" title="Close the LiDAR (LiDAR in the bar brings it back)"><i data-icon="x"></i></button>
         </div>
         <div class="pane-body">
           <div class="viewer-radar">
@@ -1271,6 +1379,8 @@
               </div>
               <button type="button" class="select-toggle" data-beam-select aria-pressed="false"
                       title="Pick a range of beams by index"><i data-icon="crosshair"></i> Select beams</button>
+              <button type="button" class="select-toggle sweep-toggle" data-sweep-toggle aria-pressed="true"
+                      title="The radar's turning line, on or off"><i data-icon="radar"></i> Sweep</button>
               <span class="viewer-range-label">Range (m)</span>
               <div class="range-switch" role="group" aria-label="LiDAR plot range" data-range-for="pane">
                 <button type="button" data-lidar-range="auto">Auto</button>
@@ -1493,6 +1603,7 @@
 <script src="js/estop.js"></script>
 <script src="js/drive.js"></script>
 <script src="js/cockpit.js"></script>
+<script src="js/radar.js"></script>
 <script src="js/main.js"></script>
 
 </body>

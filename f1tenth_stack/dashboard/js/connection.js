@@ -52,6 +52,10 @@ function setConnectionState(text, connected) {
   $("connDot").className =
     "connection-dot " +
     (connected ? "connected" : "disconnected");
+
+  /* the pill around it, coloured to match */
+  $("connDot").parentElement.dataset.state =
+    connected ? "connected" : /connecting/i.test(text) ? "connecting" : "disconnected";
 }
 
 function setConnectionHint(text) {
@@ -372,7 +376,7 @@ function onScan(message) {
 }
 
 /* ---- radar geometry ----
-   Pure, so verify_radar.mjs can check it with no DOM/websocket.
+   Pure, so tests/verify_radar.mjs can check it with no DOM/websocket.
 
    A "no return" beam does NOT come back as inf/NaN on this
    Hokuyo — measured on the robot, it reports ~65.5 m (the raw

@@ -214,8 +214,10 @@ function settingsOpen() {
 function setSettingsOpen(open) {
 
   $("cockpitSettings").hidden = !open;
-  $("cockpitSettingsBtn").setAttribute("aria-expanded", String(open));
-  $("cockpitSettingsBtn").classList.toggle("active", open);
+  ["cockpitSettingsBtn", "railSettings"].forEach(id => {
+    $(id).setAttribute("aria-expanded", String(open));
+    $(id).classList.toggle("active", open);
+  });
 
   if (open) {
     setCockpitPanel(false);          // one panel at a time
@@ -291,12 +293,70 @@ function applyBarHidden() {
   $("barHiddenToggle").checked = barHidden();
   $("controlsOnlyToggle").checked = focus;
 
+  applyRail();
+
   /* the picture changed size */
   requestAnimationFrame(() => {
     redrawPaneRadar();
     placeFloats();
   });
 }
+
+/* ---------- side rail ----------
+
+   On a computer, hiding the top bar moves the top and bottom bars'
+   essentials into one column at the left or right, so the picture
+   gets the whole height - on the Drive tab and in full screen. The
+   red alerts and notes still show, over the top of the picture.
+   Settings picks the side; kept per browser. Phones keep their own
+   corner buttons. */
+
+const RAIL_KEY = "cockpitRail";
+
+function railSide() {
+  try {
+    return localStorage.getItem(RAIL_KEY) === "left" ? "left" : "right";
+  } catch (error) {
+    return "right";
+  }
+}
+
+function railActive() {
+  return cockpitOpen && !cockpitTouchLayout() && barHidden();
+}
+
+function setRail(side) {
+  try {
+    localStorage.setItem(RAIL_KEY, side);
+  } catch (error) {}
+  applyRail();
+}
+
+function applyRail() {
+
+  const side = railActive() ? railSide() : "off";
+  const cockpit = $("cockpit");
+
+  cockpit.classList.toggle("rail", side !== "off");
+  cockpit.classList.toggle("rail-left", side === "left");
+  cockpit.classList.toggle("rail-right", side === "right");
+
+  /* one speedometer: in the rail, or in the bottom bar */
+  if (side !== "off") $("railSpeedoSlot").appendChild($("cockpitSpeedo"));
+  else document.querySelector(".cockpit-hud").prepend($("cockpitSpeedo"));
+
+  document.querySelectorAll("[data-rail]").forEach(button =>
+    button.setAttribute("aria-pressed", String(button.dataset.rail === railSide())));
+
+  /* the picture changed size */
+  requestAnimationFrame(() => {
+    redrawPaneRadar();
+    placeFloats();
+  });
+}
+
+$("railShow").onclick = () => setBarHidden(false);
+$("railGoFull").onclick = () => openCockpit();
 
 function setLidarFloat(on) {
 
@@ -473,54 +533,121 @@ function attachDivider(divider, left, right) {
 }
 
 /* Drag a pane's title onto another pane: they swap places. */
+/* Drag a docked pane by its title to put it somewhere else: over the
+   left half of another pane it goes before it, over the right half
+   after it. The half it will take lights up with a bar at the edge,
+   and a label follows the pointer. A click (under 5 px of movement)
+   does nothing; Esc or letting go over nothing cancels. */
+const PANE_DRAG_START_PX = 5;
+
 function attachPaneMove(pane) {
 
   const head = pane.querySelector(".pane-head");
 
   head.addEventListener("pointerdown", event => {
 
-    /* the title's own buttons, and the floating controls card, which
-       moves freely instead of swapping (attachFloat) */
+    /* the title's own buttons, and the floating windows, which move
+       freely instead (attachFloat) */
     if (event.target.closest("button")) return;
     if (pane.classList.contains("floating")) return;
+    if (event.button !== 0) return;
 
     event.preventDefault();
     head.setPointerCapture(event.pointerId);
-    pane.classList.add("moving");
 
-    let target = null;
+    const startX = event.clientX;
+    const startY = event.clientY;
+    let dragging = false;
+    let drop = null;            // { target, after }
+    let ghost = null;
+
+    const clearMark = () => {
+      document.querySelectorAll(".drop-before, .drop-after").forEach(el =>
+        el.classList.remove("drop-before", "drop-after"));
+    };
+
+    const begin = () => {
+      dragging = true;
+      pane.classList.add("moving");
+      $("cockpit").classList.add("pane-dragging");
+      ghost = document.createElement("div");
+      ghost.className = "pane-ghost";
+      ghost.innerHTML = icon("move") + " " + escapeHtml(head.textContent.trim().split(/\s+/)[0]);
+      $("cockpit").appendChild(ghost);
+    };
 
     const move = moveEvent => {
 
-      const under = document.elementFromPoint(moveEvent.clientX, moveEvent.clientY);
-      const hit = under && under.closest(".pane");
+      if (!dragging) {
+        if (Math.hypot(moveEvent.clientX - startX, moveEvent.clientY - startY) < PANE_DRAG_START_PX) return;
+        begin();
+      }
 
-      if (target) target.classList.remove("drop-target");
-      target = hit && hit !== pane ? hit : null;
-      if (target) target.classList.add("drop-target");
-    };
+      /* beside the pointer, never off the screen's edge */
+      ghost.style.left =
+        Math.min(moveEvent.clientX, innerWidth - ghost.offsetWidth - 16) + "px";
+      ghost.style.top =
+        Math.min(moveEvent.clientY, innerHeight - ghost.offsetHeight - 16) + "px";
 
-    const done = () => {
+      /* the docked pane under the pointer, by position: floating windows
+         and the ghost itself never count */
+      const target = [...$("cockpitPanes").querySelectorAll(".pane")].find(other => {
+        if (other === pane || other.hidden || other.classList.contains("floating")) return false;
+        const r = other.getBoundingClientRect();
+        return moveEvent.clientX >= r.left && moveEvent.clientX <= r.right &&
+               moveEvent.clientY >= r.top && moveEvent.clientY <= r.bottom;
+      });
 
-      head.removeEventListener("pointermove", move);
-      pane.classList.remove("moving");
+      clearMark();
+      drop = null;
 
       if (target) {
-        target.classList.remove("drop-target");
-
-        const order = layout.order;
-        const i = order.indexOf(pane.dataset.pane);
-        const j = order.indexOf(target.dataset.pane);
-
-        [order[i], order[j]] = [order[j], order[i]];
-        saveLayout();
-        applyPanes();
+        const r = target.getBoundingClientRect();
+        const after = moveEvent.clientX > r.left + r.width / 2;
+        target.classList.add(after ? "drop-after" : "drop-before");
+        drop = { target, after };
       }
     };
 
+    const finish = commit => {
+
+      head.removeEventListener("pointermove", move);
+      head.removeEventListener("pointerup", up);
+      head.removeEventListener("pointercancel", cancel);
+      document.removeEventListener("keydown", key, true);
+
+      clearMark();
+      pane.classList.remove("moving");
+      $("cockpit").classList.remove("pane-dragging");
+      if (ghost) ghost.remove();
+
+      if (!commit || !dragging || !drop) return;
+
+      const id = pane.dataset.pane;
+      const order = layout.order.filter(other => other !== id);
+      const at = order.indexOf(drop.target.dataset.pane) + (drop.after ? 1 : 0);
+
+      order.splice(at, 0, id);
+
+      if (order.join() === layout.order.join()) return;
+
+      layout.order = order;
+      saveLayout();
+      applyPanes();
+    };
+
+    const up = () => finish(true);
+    const cancel = () => finish(false);
+    /* Esc cancels the move, and still does what it always does (on the
+       Drive tab it stops and disarms) - a drag never swallows a stop */
+    const key = keyEvent => {
+      if (keyEvent.key === "Escape") finish(false);
+    };
+
     head.addEventListener("pointermove", move);
-    head.addEventListener("pointerup", done, { once: true });
-    head.addEventListener("pointercancel", done, { once: true });
+    head.addEventListener("pointerup", up);
+    head.addEventListener("pointercancel", cancel);
+    document.addEventListener("keydown", key, true);
   });
 }
 
@@ -645,6 +772,7 @@ function closeCockpit() {
 
   cockpitFull = false;
   $("cockpit").classList.remove("full");
+  applyRail();
 
   if (screen.orientation && screen.orientation.unlock) {
     try { screen.orientation.unlock(); } catch (error) {}
@@ -691,6 +819,7 @@ function applyCockpitInput() {
 
     padHeld = true;
     padVec = { x: cockpitPad.x, y: cockpitPad.y };
+    driveNow();
     return;
   }
 
@@ -704,6 +833,9 @@ function applyCockpitInput() {
     x: steering ? cockpitSteer.value : 0,
     y: throttle ? cockpitThrottle.value : 0
   };
+
+  /* the thumbs just moved: send now, not at the next tick */
+  driveNow();
 }
 
 function releaseCockpitInputs() {
@@ -1033,7 +1165,7 @@ function renderCockpitArm() {
 
   const button = $("armBtn");
 
-  ["cockpitArm", "cockpitArmQuick", "cockpitMiniArm"].forEach(id => {
+  ["cockpitArm", "cockpitArmQuick", "cockpitMiniArm", "railArm"].forEach(id => {
     $(id).textContent = button.textContent;
     $(id).classList.toggle("armed", driveArmed);
   });
@@ -1043,12 +1175,14 @@ function renderCockpitArm() {
   /* the quick buttons explain instead of greying out */
   $("cockpitArmQuick").disabled = !driveArmed && !socketOpen();
   $("cockpitMiniArm").disabled = $("cockpitArmQuick").disabled;
+  $("railArm").disabled = $("cockpitArmQuick").disabled;
 
   $("cockpitPad").classList.toggle("ready", driveArmed);
   $("stickSteer").classList.toggle("ready", driveArmed);
   $("stickThrottle").classList.toggle("ready", driveArmed);
 
   $("cockpitConfirm").checked = $("driveConfirm").checked;
+  $("railConfirm").checked = $("driveConfirm").checked;
 }
 
 /* Slower bits, from the main 2 Hz render loop. */
@@ -1060,6 +1194,10 @@ function renderCockpit() {
   $("cockpitHealth").dataset.health = $("statusBanner").dataset.health || "unknown";
 
   $("cockpitBattery").innerHTML = $("hudBattery").innerHTML;
+
+  $("railHealth").textContent = $("cockpitHealth").textContent;
+  $("railHealth").dataset.health = $("cockpitHealth").dataset.health;
+  $("railBattery").innerHTML = $("hudBattery").innerHTML;
   $("cockpitSpeedMode").hidden = $("hudSpeedMode").hidden;
   $("cockpitSteerMode").hidden = $("hudSteerMode").hidden;
 
@@ -1086,9 +1224,11 @@ function renderCockpit() {
   mine.className = estop.className;
   mine.disabled = estop.disabled;
 
-  $("cockpitMiniEstop").innerHTML = estop.innerHTML;
-  $("cockpitMiniEstop").className = estop.className;
-  $("cockpitMiniEstop").disabled = estop.disabled;
+  ["cockpitMiniEstop", "railEstop"].forEach(id => {
+    $(id).innerHTML = estop.innerHTML;
+    $(id).className = estop.className + (id === "railEstop" ? " rail-estop" : "");
+    $(id).disabled = estop.disabled;
+  });
 
   const alerts = [];
 
@@ -1127,6 +1267,11 @@ function renderCockpitDriving() {
   $("cockpitWho").innerHTML = $("controlIcon").innerHTML + " " + escapeHtml($("controlTitle").textContent);
   $("cockpitWho").title = $("controlSub").textContent;
   $("cockpitWho").dataset.tone = tone;
+
+  $("railWho").innerHTML = $("controlIcon").innerHTML +
+    "<span>" + escapeHtml($("controlTitle").textContent) + "</span>";
+  $("railWho").title = $("controlSub").textContent;
+  $("railWho").dataset.tone = tone;
 
   const source = $("padDisconnectBtn");
   const mine = $("cockpitPadDisconnect");
@@ -1261,6 +1406,8 @@ function renderCockpitFast() {
 
   $("cockpitState").textContent = state.textContent;
   $("cockpitState").className = state.className;
+  $("railState").textContent = state.textContent;
+  $("railState").className = state.className;
 
   $("cockpitSteer").textContent = $("cmdSteer").textContent;
   $("cockpitSteerMark").style.left = $("steerMark").style.left;
@@ -1287,6 +1434,61 @@ function renderCockpitFast() {
     renderCockpitLidar();
   }
 }
+
+/* ---------- latency: the round trip to the car ----------
+
+   A tiny rosapi call every 2 s while the view is open, timed there and
+   back. Every command from this page pays about half of it on its way
+   to the car (Wi-Fi, then rosbridge); the physical controller pays
+   none of it - it goes over Bluetooth straight into the car. The
+   median of the last five, so one slow packet does not flash red. */
+const LATENCY_EVERY_MS = 2000;
+const LATENCY_WARN_MS = 50;
+const LATENCY_BAD_MS = 120;
+const latencySamples = [];
+
+async function measureLatency() {
+
+  if (!cockpitOpen || !socketOpen() || document.hidden) return;
+
+  const started = performance.now();
+
+  try {
+    await call("/rosapi/get_time");
+  } catch (error) {
+    latencySamples.length = 0;
+    renderLatency();
+    return;
+  }
+
+  latencySamples.push(performance.now() - started);
+  if (latencySamples.length > 5) latencySamples.shift();
+
+  renderLatency();
+}
+
+function renderLatency() {
+
+  const sorted = [...latencySamples].sort((a, b) => a - b);
+  const ms = sorted.length ? sorted[Math.floor(sorted.length / 2)] : null;
+  const tone = ms === null ? "" : ms >= LATENCY_BAD_MS ? "bad" : ms >= LATENCY_WARN_MS ? "warn" : "ok";
+  const title =
+    "Latency: the round trip from this page to the car and back. Each command takes about " +
+    "half of it to arrive; the physical controller skips it (Bluetooth, " +
+    `straight into the car). Under ${LATENCY_WARN_MS} ms is good; over ` +
+    `${LATENCY_BAD_MS} ms, driving from here will feel late - move closer to ` +
+    "the router, or close the camera to free up the Wi-Fi.";
+
+  ["cockpitLatency", "railLatency"].forEach(id => {
+    $(id).hidden = ms === null || !socketOpen();
+    $(id).dataset.tone = tone;
+    $(id).title = title;
+    $(id).innerHTML = icon("link") + (id === "cockpitLatency" ? " Latency " : " ") +
+      (ms === null ? "" : Math.round(ms) + " ms");
+  });
+}
+
+setInterval(measureLatency, LATENCY_EVERY_MS);
 
 /* ---------- arranging (phones): move the sticks and STOP ----------
 
@@ -1673,6 +1875,13 @@ window.addEventListener("resize", () => requestAnimationFrame(placeFloats));
 
 $("controlsHide").onclick = () => setPane("controls", false);
 
+/* the LiDAR's x, like the controls': with no camera on, the camera
+   takes its place (there is always a picture) */
+$("lidarHide").onclick = () => {
+  if (!layout.on.includes("camera")) setPane("camera", true);
+  setPane("lidar", false);
+};
+
 /* The close-object warning on or off, kept per browser. Off hides only
    the sentence: the edge lights, the LiDAR pane and the red alerts
    still show. */
@@ -1754,7 +1963,8 @@ setInterval(updateWakeLock, 2000);    // follows open / close / tab changes
    switches. Reloads the page, so it disarms first. */
 const VIEW_KEYS = ["cockpitLayouts", "cockpitTabLayout", "cockpitBarHidden",
   "cockpitControlsOnly", "cockpitGlow", "cockpitWarn", "cockpitLayout",
-  "cockpitFloat", "cockpitUnits", "cockpitWake", "cockpitBuzz"];
+  "cockpitFloat", "cockpitUnits", "cockpitWake", "cockpitBuzz", "cockpitRail",
+  "radarSweep"];
 
 $("cockpitResetAll").onclick = () => {
 
@@ -1812,7 +2022,7 @@ $("cockpitSettingsClose").onclick = () => setSettingsOpen(false);
 /* a click anywhere else closes Settings */
 document.addEventListener("pointerdown", event => {
   if (settingsOpen() &&
-      !event.target.closest("#cockpitSettings, #cockpitSettingsBtn")) {
+      !event.target.closest("#cockpitSettings, #cockpitSettingsBtn, #railSettings")) {
     setSettingsOpen(false);
   }
 });
@@ -1872,6 +2082,25 @@ $("cockpitPanelClose").onclick = () => setCockpitPanel(false);
 
 $("cockpitCamConnect").onclick = reconnectCamera;
 
+/* the side rail: each button does what the one it stands in for does */
+document.querySelectorAll("[data-rail]").forEach(button => {
+  button.onclick = () => setRail(button.dataset.rail);
+});
+
+$("railArm").onclick = () => $("cockpitArmQuick").onclick();
+$("railStop").onclick = () => $("cockpitStop").onclick();
+$("railEstop").onclick = triggerEstop;
+$("railExit").onclick = closeCockpit;
+$("railSettings").onclick = () => setSettingsOpen(!settingsOpen());
+
+$("railConfirm").addEventListener("change", () => {
+
+  $("driveConfirm").checked = $("railConfirm").checked;
+  $("driveConfirm").dispatchEvent(new Event("change"));
+
+  renderCockpitArm();
+});
+
 /* leaving browser fullscreen (Esc, the system back gesture) leaves
    drive mode with it */
 document.addEventListener("fullscreenchange", () => {
@@ -1909,4 +2138,6 @@ window.matchMedia(COCKPIT_PORTRAIT_QUERY).addEventListener("change", event => {
   if (driveArmed) disarmDrive("phone turned upright");
 });
 
-setInterval(renderCockpitFast, 1000 / DRIVE_HZ);
+/* the readouts at 20 Hz: plenty for the eye, and the commands (50 Hz,
+   drive.js) are not held up by drawing */
+setInterval(renderCockpitFast, 1000 / 20);

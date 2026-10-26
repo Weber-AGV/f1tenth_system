@@ -2,13 +2,14 @@
 
 A web page that shows, at a glance, whether this F1TENTH car is OK to drive and, if it is not, what is wrong. It is served by the robot and opened in a browser on any laptop or phone on the same Wi-Fi. Nothing is installed on the laptop. It also streams the camera, draws the lidar, and can drive the car.
 
-`bringup` starts it along with the drive stack. It is developed in the team repo `wsu-roboracer/robot-diagnostics` (`prototype/`, which also has the tests) and copied here. Paths below are relative to the `f1tenth_stack` package folder. This file is the full reference: how to run it, every check in depth (what it reads, how it is judged, why its lines are where they are, and what to change), and the dead ends we already ruled out. The team repo's [system-overview.md](https://github.com/wsu-roboracer/robot-diagnostics/blob/main/docs/system-overview.md) adds why the dashboard is built the way it is and how to develop it (private to the `wsu-roboracer` organisation; ask the professor for access).
+`bringup` starts it along with the drive stack. Paths below are relative to the `f1tenth_stack` package folder. This file is the full reference: how to run it, every check in depth (what it reads, how it is judged, why its lines are where they are, and what to change), and the dead ends we already ruled out. How to *use* each tab, with screenshots, is in the [guides](#guides).
 
 ## Contents
 
 - [How it fits together](#how-it-fits-together)
 - [Running it](#running-it)
 - [Reading the page](#reading-the-page)
+- [Guides](#guides)
 - [Ranges: what is green, yellow and red](#ranges-what-is-green-yellow-and-red)
 - [How each check works](#how-each-check-works)
 - [Dead ends: things we tried that don't work](#dead-ends-things-we-tried-that-dont-work)
@@ -40,7 +41,7 @@ A web page that shows, at a glance, whether this F1TENTH car is OK to drive and,
 
 ## Running it
 
-`bringup` (the alias for `ros2 launch f1tenth_stack bringup_launch.py`) starts the dashboard with the drive stack. Then open `http://<robot ip>:8000/dashboard.html` from a device on the robot's Wi-Fi, for example `http://192.168.1.206:8000/dashboard.html` for robot #6. On the robot, `hostname -I` shows its address: use the one starting `192.168.1.` (the `192.168.0.` one is the robot's own cable to the lidar). The page finds rosbridge and the camera on the machine it was loaded from, so nothing else needs an address.
+`bringup` (the alias for `ros2 launch f1tenth_stack bringup_launch.py`) starts the dashboard with the drive stack. Then open `http://<robot ip>:8000/dashboard.html` from a device on the robot's Wi-Fi, for example `http://192.168.1.206:8000/dashboard.html` for robot 6. On the robot, `hostname -I` shows its address: use the one starting `192.168.1.` (the `192.168.0.` one is the robot's own cable to the lidar). The page finds rosbridge and the camera on the machine it was loaded from, so nothing else needs an address. To look at another car from the same page, pick it in the top bar's robot list (or type its address beside the list) and the page connects to it.
 
 | Launch argument | Default | What it does |
 |---|---|---|
@@ -64,9 +65,9 @@ For example `ros2 launch f1tenth_stack bringup_launch.py use_camera:=false`. Wit
 Most of this is probably already done on the cars; each step says how to check before changing anything.
 
 1. `git pull` and `git submodule update --init --recursive` in `~/f1tenth_ws/src/f1tenth_system`, then `colcon build --packages-select f1tenth_stack` and restart bringup.
-2. rosbridge and GStreamer installed. Usually nothing to do: GStreamer comes with the Jetson's Ubuntu image, and rosbridge is already on robots #2 and #6. If either is missing, run `rosdep install --from-paths src --ignore-src -r -y` in `~/f1tenth_ws`; it installs both, since they are declared in `package.xml`. On a brand-new car, the `wsu-roboracer/robot-commissioning` setup script runs that for you.
-3. The login user in the `input` group, or ROS cannot read the controller. Check with `id`: if `input` is listed, it's done (it is on #2 and #6). If not, `sudo usermod -aG input $USER`, then log out and back in.
-4. A `ROS_DOMAIN_ID` no other car uses, or the page lists the other car's nodes as well. Check with `echo $ROS_DOMAIN_ID`. The cars so far use 200 plus the robot's number, set in `~/.bashrc` (`export ROS_DOMAIN_ID=206` on #6, 202 on #2).
+2. rosbridge and GStreamer installed. Usually nothing to do: GStreamer comes with the Jetson's Ubuntu image, and rosbridge is already on robots 2 and 6. If either is missing, run `rosdep install --from-paths src --ignore-src -r -y` in `~/f1tenth_ws`; it installs both, since they are declared in `package.xml`. On a brand-new car, the `wsu-roboracer/robot-commissioning` setup script runs that for you.
+3. The login user in the `input` group, or ROS cannot read the controller. Check with `id`: if `input` is listed, it's done (it is on robots 2 and 6). If not, `sudo usermod -aG input $USER`, then log out and back in.
+4. A `ROS_DOMAIN_ID` no other car uses, or the page lists the other car's nodes as well. Check with `echo $ROS_DOMAIN_ID`. The cars so far use 200 plus the robot's number, set in `~/.bashrc` (`export ROS_DOMAIN_ID=206` on robot 6, 202 on robot 2).
 5. The camera device. Bringup reads `/dev/video4` by default; check with `v4l2-ctl --list-devices`, and if the RealSense's colour stream is somewhere else, start bringup with `camera_device:=<device>`.
 6. The VESC driver's temperature patch, or the FET temperature shows "no reading" (see [Known gaps](#known-gaps)).
 
@@ -78,7 +79,13 @@ Serve `dashboard/` from a laptop and point it at a running car:
 python3 -m http.server 8000          # in f1tenth_stack/dashboard
 ```
 
-Then open `http://localhost:8000/dashboard.html?url=ws://<robot ip>:9090`. The `ws://...` field and **Connect** button in the top bar do the same as `?url=`. Served from the robot, the page fills them in itself.
+Then open `http://localhost:8000/dashboard.html?url=ws://<robot ip>:9090`, or pick the car in the top bar's robot list. The list is `ROBOTS` in `dashboard/js/config.js` (`F1-WSU-1` to `F1-WSU-12` at `ws://192.168.1.201:9090` to `.212`); **Other…** and the address box beside it take any other address, and **Connect** (or Enter) connects. Served from the robot, the page fills the address in itself.
+
+Checks that need no robot (the LiDAR geometry, Select beams, the Robot System list and joystick check, the camera proxy, and the robot side's parsers, emergency stop and joystick check) run with one command. They need Node.js and Python 3, and no ROS:
+
+```bash
+node dashboard/tests/run.mjs        # in f1tenth_stack; exits non-zero if any check fails
+```
 
 ## Reading the page
 
@@ -92,6 +99,14 @@ Then open `http://localhost:8000/dashboard.html?url=ws://<robot ip>:9090`. The `
 The banner at the top shows the worst of seven subsystems (Controller, VESC, LiDAR, Odometry, Camera, Battery, Control Mode) and names the ones at fault. A red bar across the top means the page has heard nothing from the robot for 4 seconds, so what it shows may be old; an orange bar means this browser is one too many for rosbridge (see [Known gaps](#known-gaps)).
 
 Topic states and why a quiet topic is not always a fault are under [Topics](#topics).
+
+## Guides
+
+Step-by-step guides to each tab, with a screenshot of everything they describe. They are for people using the page; this README is for people changing it.
+
+- [Overview tab](docs/guides/overview-tab.md): connecting to a car, the 10-second check, battery and computer tiles, subsystems, the camera and the LiDAR card.
+- [Drive tab](docs/guides/drive-tab.md): arming, driving with the keys, pad or a phone, full screen, arranging the view, recording the camera, and what stops the car.
+- [Advanced tab](docs/guides/advanced-tab.md): the robot's own checks, nodes, topics, ROS diagnostics, and the joystick check.
 
 ## Ranges: what is green, yellow and red
 
@@ -140,7 +155,7 @@ Shows the main battery's voltage and an estimated charge, and warns before the p
 
 **How it is judged.** On the page. Under throttle the voltage swings about 0.2 V within a second, so the page keeps the last 5 seconds of readings and judges their median, not the latest reading. Green at 11.6 V or more, yellow from 11.1 to 11.6 V ("low, get a spare pack ready"), red below 11.1 V ("replace the pack soon"). The percentage is a straight line from 11.1 V (0%) to 12.6 V (100%).
 
-**Why these lines.** A run-down test on robot #2, **with the car sitting still, not driving**, started at 10.4 V. The pack fell about 0.25 V a minute to about 9.3 V, then about 1 V a minute, and the robot lost power about five minutes after 10.4 V (last reading 8.8 V). Driving draws far more current, so on the track it goes faster than that, and red sits at 11.1 V (3.7 V per cell) to leave time to swap the pack. Nothing on the car stops the pack from running too low, and LiPo cells start to get damaged below about 3.3 V each (9.9 V for this 3-cell pack), so red is the only warning: **swap the pack when it turns red.** Yellow at 11.6 V is a convention: a buffer to get a spare ready. Signed off by the professor as a starting value; see [Ranges](#ranges-what-is-green-yellow-and-red).
+**Why these lines.** A run-down test on robot 2, **with the car sitting still, not driving**, started at 10.4 V. The pack fell about 0.25 V a minute to about 9.3 V, then about 1 V a minute, and the robot lost power about five minutes after 10.4 V (last reading 8.8 V). Driving draws far more current, so on the track it goes faster than that, and red sits at 11.1 V (3.7 V per cell) to leave time to swap the pack. Nothing on the car stops the pack from running too low, and LiPo cells start to get damaged below about 3.3 V each (9.9 V for this 3-cell pack), so red is the only warning: **swap the pack when it turns red.** Yellow at 11.6 V is a convention: a buffer to get a spare ready. Signed off by the professor as a starting value; see [Ranges](#ranges-what-is-green-yellow-and-red).
 
 **What is sent.** `/sensors/core`, field `state.voltage_input`.
 
@@ -162,7 +177,7 @@ Shows the main battery's voltage and an estimated charge, and warns before the p
 
 Shows whether the motor controller is running, its power transistors' (FET) temperature, and any fault it reports.
 
-**Where it comes from.** `/sensors/core` from `vesc_driver_node`: `state.temp_fet` (temperature, in C) and `state.fault_code` (0 is no fault). The temperature is only filled in on cars with the VESC driver patch (robots #2 and #6); without it the field is always exactly `0.0`.
+**Where it comes from.** `/sensors/core` from `vesc_driver_node`: `state.temp_fet` (temperature, in C) and `state.fault_code` (0 is no fault). The temperature is only filled in on cars with the VESC driver patch (robots 2 and 6); without it the field is always exactly `0.0`.
 
 **How it is judged.** On the page. The VESC row is red if `vesc_driver_node` is not running or `fault_code` is not 0. Otherwise the FET temperature decides: green below 65 C, yellow from 65 C, red from 80 C. A reading of exactly 0.0 is treated as "no reading" (the missing patch), not as 0 C.
 
@@ -199,7 +214,7 @@ Catches an unplugged motor controller before its topic even goes quiet.
 
 ### Board temperatures
 
-Shows how hot the Jetson's chip is. It slows itself down at 70 C and 99 C and shuts off at 104.5 C (measured on robot #2).
+Shows how hot the Jetson's chip is. It slows itself down at 70 C and 99 C and shuts off at 104.5 C (measured on robot 2).
 
 **Where it comes from.** `system_diagnostics` reads every Linux thermal zone, `/sys/devices/virtual/thermal/thermal_zone*/temp` (thousandths of a degree) with its name from `.../type`, once a second. On these Jetsons the zones are `tj-thermal` (junction, the hottest point), `cpu-thermal`, `gpu-thermal`, `soc0-thermal` to `soc2-thermal`, and `cv0` to `cv2`, which often fail to read; a zone that fails is skipped for that second and listed as "unreadable this pass".
 
@@ -291,7 +306,7 @@ Warns before the robot's disk fills up.
 
 Shows how busy the graphics processor is, which vision and machine learning code use.
 
-**Where it comes from.** `system_diagnostics` reads the GPU driver's `load` file once a second. Its location differs between Jetson models, so the node searches the paths in `GPU_LOAD_GLOBS` at startup (on robot #6: `/sys/devices/platform/bus@0/17000000.gpu/load`). The file counts in tenths of a percent (0 to 1000). The clock speed comes from the GPU's `cur_freq` file under `/sys/class/devfreq/`. If the load file does not exist, the node falls back to the `GR3D_FREQ` field of `tegrastats`, read every 10 seconds.
+**Where it comes from.** `system_diagnostics` reads the GPU driver's `load` file once a second. Its location differs between Jetson models, so the node searches the paths in `GPU_LOAD_GLOBS` at startup (on robot 6: `/sys/devices/platform/bus@0/17000000.gpu/load`). The file counts in tenths of a percent (0 to 1000). The clock speed comes from the GPU's `cur_freq` file under `/sys/class/devfreq/`. If the load file does not exist, the node falls back to the `GR3D_FREQ` field of `tegrastats`, read every 10 seconds.
 
 **How it is judged.** On the robot. Yellow once the GPU has been at 95% or more for 5 seconds in a row (5 readings, one a second). There is no red: a busy GPU just means something is using it.
 
@@ -406,7 +421,12 @@ The Network tile's Lidar row is judged separately: "unplugged" (no cable link) a
 
 **What is sent.** `/scan` (fields above); report `urg_node: Laser Scan topic status`, keys `Actual frequency (Hz)`, `Minimum acceptable frequency (Hz)`, `Maximum acceptable frequency (Hz)`; report `system: Network`, the key starting `lidar ` (`lidar 192.168.0.10`, value `reachable, 0.25 ms` or `NO REPLY`) and the Ethernet interface's key with `carrier=`. `urg_node` also sends `urg_node: Hardware Status` (device status, error counts, serial number), shown as is in the Robot System list.
 
-**On the page.** The LiDAR row in Subsystems; the Lidar row of the Network tile and the footer; the LiDAR card (plot, distances ahead / left / right / closest, Select beams); the driving view's LiDAR pane or floating LiDAR window; and the camera's edge lights and "Very close" warning.
+**On the page.** The LiDAR row in Subsystems; the Lidar row of the Network tile and the footer; the LiDAR card; the driving view's LiDAR pane or floating LiDAR window; and the camera's edge lights and "Very close" warning. The plot has two views, one choice for every plot on the page, remembered per browser:
+
+- **Lines** (the default): the scan as one green outline, with red (0.5 m) and amber (1 m) circles around a to-scale car, and the closest return ahead, left, right and overall underneath.
+- **Detailed** (`dashboard/js/radar.js`): every return as a dot, walls as outlines, neighbouring returns grouped into objects with the nearest five numbered (amber under 1 m, red under 0.3 m, ▼ and a speed when one is getting closer), a status for each direction, and a **Sweep** button for the turning line. Point at the plot for an object's distance, direction and width. **Ignore angles** hides parts of your own car the lidar sees.
+
+Both views zoom (scroll, or the range buttons), pan (drag), and **Select beams** reads back a range of `ranges[]` indexes.
 
 **To change.**
 
@@ -417,6 +437,7 @@ The Network tile's Lidar row is judged separately: "unplugged" (no cable link) a
 | The lidar's address | `f1tenth_stack/system_diagnostics.py` | `LIDAR_IP = "192.168.0.10"` |
 | "Close" and "very close" | `dashboard/js/metrics.js` | `LIDAR_CLOSE = 1.0`, `LIDAR_NEAR = 0.5` (metres); used by the card, the Drive tab and the edge lights |
 | Plot range buttons, Auto range | `dashboard/js/metrics.js` | `LIDAR_RANGES`, `AUTO_MIN_RANGE = 2` |
+| Detailed view: object lines, grouping, sectors, sweep | `dashboard/js/radar.js` | `RADAR` (`danger: 0.30`, `warn: 1.00`, `nearestShown: 5`, `sectors`, `sweepSeconds: 4`) |
 | Edge light directions | `dashboard/js/cockpit.js` | `COCKPIT_GLOW_SECTORS` |
 
 ### Camera
@@ -436,6 +457,8 @@ Streams the front camera, and checks it is connected properly and delivering fra
 
 **On the page.** The camera picture (Overview and the driving view), its status tag (`LIVE · 30 fps`), and the Camera row in Subsystems. The page finds the camera on port 8082 of the robot rosbridge is connected to, and retries every 3 to 15 seconds while the robot is up and the picture is not. Typing an address under "Change camera address" switches that off until "Use automatic" is pressed.
 
+**Recording.** **Record** (the camera card, the driving view's top bar, the side rail) records the stream in the browser: each frame of the page's one camera `<img>` is drawn onto a canvas 30 times a second, and the browser's `MediaRecorder` encodes the canvas, as MP4 where the browser can (Safari, recent Chrome) and WebM otherwise. Nothing runs on the robot and nothing extra crosses the Wi-Fi. The same `Access-Control-Allow-Origin` header that lets Take Picture read the frame lets this read every frame. Stop downloads the file, named by when it started (`camera-2026-10-26-14-03-22.mp4`). It is held in memory until then, so a recording stops itself at 15 minutes (about 280 MB at 2.5 Mbit/s); the page asks before closing while one runs. A dropped stream records as black frames with "No camera signal", so the video keeps real time.
+
 **To change.**
 
 | What | File | Setting, current value |
@@ -447,6 +470,7 @@ Streams the front camera, and checks it is connected properly and delivering fra
 | Ports | `f1tenth_stack/camera_http.py`, `dashboard/js/camera.js` | `GSTREAMER_PORT = 8081`, `HTTP_PORT = 8082`; `CAMERA_PORT = 8082` in the page |
 | How much a slow viewer may queue | `f1tenth_stack/camera_http.py` | `SEND_BUFFER = 64 * 1024` (bytes, about two frames) |
 | Retry timing | `dashboard/js/camera.js` | `CAMERA_RETRY_MIN_MS = 3000`, `CAMERA_RETRY_MAX_MS = 15000` |
+| Recording | `dashboard/js/camera.js` | `RECORD_FPS = 30`, `RECORD_BITRATE = 2500000` (bits/s), `RECORD_MAX_MS` (15 minutes), `RECORD_TYPES` (formats tried, in order) |
 
 ### Speed and odometry
 
@@ -507,7 +531,7 @@ The fix for "ROS cannot read it" is `sudo usermod -aG input <user>` on the robot
 
 Shows which input the car is listening to: nobody, the controller, or `/drive` (the page or an autonomous stack).
 
-**Where it comes from.** `ackermann_mux` chooses between its inputs and publishes its own status on `/diagnostics`, including whether each input is `masked` (being ignored) or `unmasked`. An input that has been quiet for 0.2 s is masked (`config/mux.yaml`). Measured on robot #2: with the controller connected and nothing held, the mux already reports the joystick input as unmasked. So "Joystick" means the controller is connected and its input is live, not that a deadman is held.
+**Where it comes from.** `ackermann_mux` chooses between its inputs and publishes its own status on `/diagnostics`, including whether each input is `masked` (being ignored) or `unmasked`. An input that has been quiet for 0.2 s is masked (`config/mux.yaml`). Measured on robot 2: with the controller connected and nothing held, the mux already reports the joystick input as unmasked. So "Joystick" means the controller is connected and its input is live, not that a deadman is held.
 
 **How it is judged.** On the page: joystick unmasked is "Joystick", otherwise navigation unmasked is "Navigation / web", otherwise "Idle". All three are green; only the mux not running is red.
 
@@ -523,13 +547,17 @@ The Drive tab and full screen are one view, built from panes: Camera, LiDAR and 
 
 **Where it lives.** On the Drive tab the view sits in the page, under the safety warning. Its **Full screen** button makes the same view cover the screen, and **Exit** (or Esc) puts it back. The Overview's camera buttons open it full screen directly: **Full screen** with the Camera layout, **Split** with the Watch layout. Opening it from the Overview does not change the Drive tab's own layout.
 
-**Panes and layouts.** The pane buttons at the top turn Camera, LiDAR and Controls on or off. Panes sit side by side; drag the bar between two to resize them, and drag a pane's title onto another to swap them. The layouts menu has Camera, Watch (camera and LiDAR), Drive (camera and controls), Drive + LiDAR, and LiDAR. Each layout keeps your own changes in the browser, and Reset puts it back.
+**Panes and layouts.** The pane buttons at the top turn Camera, LiDAR and Controls on or off. Panes sit side by side; drag the bar between two to resize them, and drag a pane's title over the left or right half of another to put it before or after that one (the half it will land in lights up; Esc cancels, and still stops the car). The layouts menu has Camera, Watch (camera and LiDAR), Drive (camera and controls), Drive + LiDAR, and LiDAR. Each layout keeps your own changes in the browser, and Reset puts it back.
 
-**Desktop arrangement.** The controls float over the picture as a see-through card (drag its title to move it, the x to close it), or dock as a column beside the pictures (**Dock the controls**). The LiDAR can also float over the camera as a small window you can move and resize (**A small LiDAR window on the picture**). The "Very close" warning floats on the picture; drag it or hide it.
+**Desktop arrangement.** The controls float over the picture as a see-through card (drag its title to move it, the x to close it), or dock as a column beside the pictures (**Dock the controls**). The LiDAR can also float over the camera as a small window you can move and resize (**A small LiDAR window on the picture**), and has an x of its own; closing the only picture shows the camera instead, so there is always one. The "Very close" warning floats on the picture; drag it or hide it.
 
-**The top bar.** Left: who is driving, Disconnect controller, battery. Right: the actions, with Emergency stop last. Alerts get their own row only when there is one. The bar can be hidden (its hide button, or Settings); a corner cluster then keeps Emergency stop, Arm and Show.
+**The top bar.** Left: the driving state, health, battery, **Latency** (below), the controller, who is driving. Right: the pane buttons, **Record**, Settings, Full screen or Exit, hide, and Emergency stop last. Alerts get their own row only when there is one.
 
-**Settings** holds every "how it looks" option in one panel: the arrangement switches above, Hide the top bar, Controls only (phones), the edge lights and the "Very close" warning, the LiDAR view and range, speed units, keep the screen awake, buzz when something is very close (phones), thumb stick placement, reconnect camera, and **Reset all view settings**, which clears them all and reloads the page.
+**The side rail.** Hiding the top bar (its hide button, or Settings) on a desktop moves the essentials into one column at the side, so the picture gets the whole height: state, health, battery, latency, the safety box, Arm, STOP, the speedometer, who is driving, the pane buttons, Rec, Settings, Full screen or Exit, Show bar, and E-stop at the bottom. Each rail button calls the same handler as the button it stands in for, so no driving rule is repeated. Settings → **Side rail** picks left or right. On phones, hiding the bar leaves a corner cluster instead: E-stop, Arm and Show.
+
+**Latency.** Every 2 s while the view is open, the page calls rosapi's `get_time` and times the answer; the chip shows the median of the last five, green under 50 ms, amber from 50 ms, red from 120 ms. It is the round trip, so a command takes about half of it to reach the car. It hides when the service does not answer rather than show a guess.
+
+**Settings** holds every "how it looks" option in one panel: the arrangement switches above, Hide the top bar, Side rail (left or right), Controls only (phones), the edge lights and the "Very close" warning, the LiDAR view, range and sweep line, speed units, keep the screen awake, buzz when something is very close (phones), thumb stick placement, reconnect camera, and **Reset all view settings**, which clears them all and reloads the page.
 
 **Phones** (anything touch-first, or 900 px wide or less): one picture at a time, Camera and LiDAR taking turns (unless the LiDAR floats over the camera). Driving needs the phone sideways and full screen, so turning Controls on from the Drive tab opens full screen; the controls are then a steering stick, a throttle stick and STOP. Turning the phone upright disarms.
 
@@ -543,25 +571,28 @@ The Drive tab and full screen are one view, built from panes: Camera, LiDAR and 
 | What counts as a phone | `dashboard/js/cockpit.js` | `COCKPIT_TOUCH_QUERY` (touch-first, or 900 px wide or less) |
 | Edge light directions | `dashboard/js/cockpit.js` | `COCKPIT_GLOW_SECTORS` |
 | Speed units | `dashboard/js/cockpit.js` | `SPEED_UNITS` |
+| Latency check and its colours | `dashboard/js/cockpit.js` | `LATENCY_EVERY_MS = 2000`, `LATENCY_WARN_MS = 50`, `LATENCY_BAD_MS = 120` |
+| How far a title drag goes before it is a move | `dashboard/js/cockpit.js` | `PANE_DRAG_START_PX = 5` |
 | Saved settings that Reset clears | `dashboard/js/cockpit.js` | `VIEW_KEYS` |
-| The look (sizes, colours, the frosted style) | `dashboard/css/dashboard.css` | the `cockpit` rules |
+| The look (sizes, colours, the frosted style) | `dashboard/css/cockpit.css` | its contents list at the top |
 | The markup (buttons, Settings panel) | `dashboard/dashboard.html` | the `cockpit` element |
 
 ### Driving from the page
 
 Drives the car from a browser, through the same input an autonomous stack uses.
 
-**Where it comes from.** The driving view's controls (the pad, the keys, or a phone's thumb sticks) set what the Drive tab's controller sends. It publishes `ackermann_msgs/AckermannDriveStamped` on `/drive`, the mux's navigation input, 20 times a second while armed and while the pad, a key or a stick is held. The physical controller has a higher priority in the mux, so holding its deadman always overrides the page.
+**Where it comes from.** The driving view's controls (the pad, the keys, or a phone's thumb sticks) set what the Drive tab's controller sends. It publishes `ackermann_msgs/AckermannDriveStamped` on `/drive`, the mux's navigation input, 50 times a second while armed and while the pad, a key or a stick is held, and at once whenever the input changes (a press, a drag, a release). The physical controller has a higher priority in the mux, so holding its deadman always overrides the page.
 
 **The rules.**
 
 - **Arming** needs a connection, the "area is clear" box ticked, no emergency stop, and nobody else sending on `/drive`.
 - **Deadman.** Commands go out only while the pad, a key (W A S D or the arrows) or a stick is held. Letting go sends 5 zero-speed commands, which is what stops the car: the mux sends no zero of its own when an input goes quiet.
-- **Ramping.** Speed rises at most 5 m/s per second (3 m/s in 0.6 s); steering changes at most 2.5 rad per second. Stopping is never ramped.
+- **Ramping.** With the keys (all or nothing), speed rises at most 8 m/s per second (3 m/s in 0.38 s) and steering 8 rad per second. The pad and thumb sticks are proportional, so they ramp only lightly (20 m/s², 20 rad/s). Stopping is never ramped.
 - **Bad values.** Any speed or steering that is not a number is sent as a stop.
 - **Limits.** 3 m/s and 19° by default, always shown in the controls. Unlocking 5 m/s or 23.5° needs a warning dialog, and switches off again when you leave the Drive tab.
 - **Closing the controls.** On a desktop it does not disarm: the keys keep driving (Space stops) as long as the Drive tab is underneath, and a note says so. On a phone the sticks and STOP go with the controls, so it disarms.
 - **Disarming** happens on STOP, Space or Esc, leaving the Drive tab or the driving view, leaving full screen, the window losing focus or going to the background, the connection dropping, the emergency stop, arranging the sticks, resetting the view settings, and on a phone closing the controls or turning it upright.
+- **Why the physical controller still feels quicker.** Its commands go over Bluetooth and never leave the car (about 20 ms from stick to motor, measured). The page's commands cross Wi-Fi and rosbridge first: usually 5 to 30 ms, with spikes of 100 ms or more when a packet is lost and resent. The page's own share is small (a key reaches a command in about 6 ms, measured in the browser); the **Latency** chip shows the rest.
 - **Who is driving.** The page reads `/drive`'s publishers from rosapi and the messages' `header.frame_id`, so it can tell another page or an autonomous stack from itself, and ignore the watchdog's zeros (marked `"drive_watchdog"`).
 
 **To change.**
@@ -570,8 +601,8 @@ Drives the car from a browser, through the same input an autonomous stack uses.
 |---|---|---|
 | Default limits | `dashboard/js/drive.js` | `NORMAL_MAX_SPEED = 3.0` (m/s), `NORMAL_MAX_STEER = 0.34` (rad, 19°) |
 | Unlocked limits | `dashboard/js/drive.js` | `HIGH_MAX_SPEED = 5.0`, `FULL_MAX_STEER = 0.41` (23.5°) |
-| Ramping | `dashboard/js/drive.js` | `DRIVE_ACCEL = 5.0` (m/s per second), `STEER_RATE = 2.5` (rad per second) |
-| Command rate, stop burst | `dashboard/js/drive.js` | `DRIVE_HZ = 20`, `STOP_BURST = 5` |
+| Ramping | `dashboard/js/drive.js` | `KEY_ACCEL = 8.0`, `KEY_STEER_RATE = 8.0` (keys); `PAD_ACCEL = 20.0`, `PAD_STEER_RATE = 20.0` (pad and sticks) |
+| Command rate, stop burst | `dashboard/js/drive.js` | `DRIVE_HZ = 50`, `DRIVE_NOW_MIN_MS = 10`, `STOP_BURST = 5` |
 | Keys | `dashboard/js/drive.js` | `KEY_FWD`, `KEY_BACK`, `KEY_LEFT`, `KEY_RIGHT` |
 | When closing the controls disarms | `dashboard/js/cockpit.js` | the start of `applyPanes()` |
 
@@ -581,7 +612,7 @@ Stops the car if the page loses its connection while driving.
 
 **Where it comes from.** `system_diagnostics` subscribes to `/drive`. It notes the time and speed of every command that is not its own.
 
-**How it works.** 20 times a second it checks: if the last command was moving and nothing has arrived for 0.3 s, it publishes 5 zero-speed commands on `/drive`, marked with `header.frame_id = "drive_watchdog"`. 0.3 s is longer than the mux's 0.2 s, so a publisher that is still working has already been switched away from before the watchdog would act. Measured on robot #6: zeros 0.31 to 0.51 s after the stream was cut.
+**How it works.** 20 times a second it checks: if the last command was moving and nothing has arrived for 0.3 s, it publishes 5 zero-speed commands on `/drive`, marked with `header.frame_id = "drive_watchdog"`. 0.3 s is longer than the mux's 0.2 s, so a publisher that is still working has already been switched away from before the watchdog would act. Measured on robot 6: zeros 0.31 to 0.51 s after the stream was cut.
 
 **What is sent.** Zero-speed commands on `/drive`; report `system: Drive watchdog`, yellow for 60 seconds after it has stopped the car ("stopped the car at ...").
 
@@ -640,7 +671,7 @@ Shows whether each topic is publishing as it should.
 
 A continuous topic with no message for 2 seconds is `STALE`; one with a publisher that never sent anything is `SILENT`. Slow topics are yellow. `STALE`, `SILENT`, not-advertised (the node runs but never created the topic, usually because it could not open its device), `MISSING` (not in the graph) and no-publisher topics are red.
 
-**Why these lines.** A single "silence is a fault" rule flagged 16 of 23 topics on a healthy car, so each topic has a class. With the classes, only topics that publish on a timer can be `STALE`: one that sends once is latched, and one that only sends while someone drives is an event, so neither is ever red for being quiet. That makes a stopped topic a real fault, so it is red. On a healthy car (robot #6), every listed topic is advertised by its node. Signed off by the professor as a starting value; see [Ranges](#ranges-what-is-green-yellow-and-red).
+**Why these lines.** A single "silence is a fault" rule flagged 16 of 23 topics on a healthy car, so each topic has a class. With the classes, only topics that publish on a timer can be `STALE`: one that sends once is latched, and one that only sends while someone drives is an event, so neither is ever red for being quiet. That makes a stopped topic a real fault, so it is red. On a healthy car (robot 6), every listed topic is advertised by its node. Signed off by the professor as a starting value; see [Ranges](#ranges-what-is-green-yellow-and-red).
 
 **On the page.** Key topics in the ROS Graph card, and the Advanced tab's topic table (click a row to see its live message).
 
@@ -716,8 +747,8 @@ Written down so nobody spends a session re-checking them. Each one was tried on 
 Apart from these, the page only reads. Each links to its full entry above.
 
 - **[Emergency stop](#emergency-stop)** stops the car for everyone, including whoever holds the physical controller. Every input reaches the motor through `ackermann_to_vesc_node`, so `system_diagnostics` freezes that node and commands speed 0 at 50 Hz. A red banner shows on every open page until someone presses **Release**, which is refused while L1 or R1 is held, so the car never resumes into a live command.
-- **[Driving from the page](#driving-from-the-page)** (Drive tab, or full screen) publishes to `/drive`, the mux's navigation input, 20 times a second, only while armed ("area is clear" ticked) and while a key, the pad or a phone's thumb stick is held. Letting go sends 5 zero-speed commands. 3 m/s and 19 degrees by default; 5 m/s and 23.5 degrees need a warning dialog. The physical controller has a higher priority in the mux, so holding its deadman always wins. L1 is the deadman for manual driving, R1 for autonomous (`/drive`).
-- **The [drive watchdog](#drive-watchdog)** stops the car if the page loses its connection mid-drive: if the last `/drive` command was moving and nothing arrives for 0.3 s, `system_diagnostics` sends 5 zeros, marked `header.frame_id = "drive_watchdog"`. Measured on robot #6: zeros 0.31 to 0.51 s after the link was cut. 0.3 s is longer than the mux's 0.2 s timeout, so it never cuts off a publisher that is still working.
+- **[Driving from the page](#driving-from-the-page)** (Drive tab, or full screen) publishes to `/drive`, the mux's navigation input, 50 times a second, only while armed ("area is clear" ticked) and while a key, the pad or a phone's thumb stick is held. Letting go sends 5 zero-speed commands. 3 m/s and 19 degrees by default; 5 m/s and 23.5 degrees need a warning dialog. The physical controller has a higher priority in the mux, so holding its deadman always wins. L1 is the deadman for manual driving, R1 for autonomous (`/drive`).
+- **The [drive watchdog](#drive-watchdog)** stops the car if the page loses its connection mid-drive: if the last `/drive` command was moving and nothing arrives for 0.3 s, `system_diagnostics` sends 5 zeros, marked `header.frame_id = "drive_watchdog"`. Measured on robot 6: zeros 0.31 to 0.51 s after the link was cut. 0.3 s is longer than the mux's 0.2 s timeout, so it never cuts off a publisher that is still working.
 - **Disconnect controller** ([Controller](#controller)) drops the controller's Bluetooth link. Refused while L1 or R1 is held.
 - **Run joystick check** (Advanced tab, [Controller](#controller)) tells apart the three causes of a silent `/joy`: no controller, a working one, or one ROS has no permission to read.
 
@@ -730,6 +761,9 @@ Apart from these, the page only reads. Each links to its full entry above.
 | Subsystems and the banner | `dashboard/js/health.js` |
 | Driving: limits, ramping, keys | `dashboard/js/drive.js` |
 | The driving view's layout and settings | `dashboard/js/cockpit.js` |
+| The robot list in the top bar | `ROBOTS` in `dashboard/js/config.js` |
+| The look of each part of the page | `dashboard/css/` (one file per area; `dashboard/css/README.md` says what is where) |
+| Checks that need no robot | `dashboard/tests/` (`node dashboard/tests/run.mjs`) |
 | Robot-side checks, their thresholds, emergency stop and watchdog | `f1tenth_stack/system_diagnostics.py` |
 | Camera proxy | `f1tenth_stack/camera_http.py` |
 | What starts with bringup, launch arguments, ports | `launch/bringup_launch.py` |
@@ -746,7 +780,9 @@ The scripts in `dashboard/js/` share one scope, so **the load order in `dashboar
 | `launch/bringup_launch.py`, `config/*.yaml`, `maps/` | the same build | Restart bringup |
 | `setup.py` (a new file type or program) | the same build | Restart bringup, from a new terminal |
 
-To change it for every car, commit it to `f1tenth_system`; the other cars get it with `git pull` and the same build. Make page changes in `wsu-roboracer/robot-diagnostics/prototype` first, where the tests are, and keep the two copies in step.
+To change it for every car, commit it to `f1tenth_system`; the other cars get it with `git pull` and the same build. Run `node dashboard/tests/run.mjs` first.
+
+The package also has the three lint tests every new ROS 2 package gets from its template (`test/test_flake8.py`, `test_pep257.py`, `test_copyright.py`), run with `colcon test --packages-select f1tenth_stack`. Nothing runs them automatically. The dashboard's Python files (`system_diagnostics.py`, `camera_http.py`) pass flake8 and pep257; the copyright test fails on every Python file in the package, the original ones included, because none has a header it recognises.
 
 **Changing a compiled driver, like `vesc_driver`** (C++, in the `vesc` submodule): edit it under `~/f1tenth_ws/src/f1tenth_system/vesc`, then
 
@@ -788,4 +824,4 @@ and restart bringup. `--allow-overriding` is needed because `.bashrc` sources th
 
 ## Who built this
 
-The Weber State CS 4850 robot diagnostics team: Alex ([@AlexStapp](https://github.com/AlexStapp)), Darrin ([@dbrack13](https://github.com/dbrack13)), Luke ([@hqluke](https://github.com/hqluke)) and Saman ([@samanchapagain](https://github.com/samanchapagain)), under the direction of Professor Scott Hadzik ([@scotthadzik](https://github.com/scotthadzik)). The research behind it (measured rates, the topic classes, the ranges and why) is in `wsu-roboracer/robot-diagnostics/docs`.
+The Weber State CS 4850 robot diagnostics team: Alex ([@AlexStapp](https://github.com/AlexStapp)), Darrin ([@dbrack13](https://github.com/dbrack13)), Luke ([@hqluke](https://github.com/hqluke)) and Saman ([@samanchapagain](https://github.com/samanchapagain)), under the direction of Professor Scott Hadzik ([@scotthadzik](https://github.com/scotthadzik)). It started as the team's own prototype; what that work measured and decided (the rates, the topic classes, the ranges and why, and the dead ends) is written into this README and the guides.
