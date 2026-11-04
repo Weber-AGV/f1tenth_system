@@ -1268,6 +1268,19 @@ function renderCockpitDriving() {
   $("cockpitWho").title = $("controlSub").textContent;
   $("cockpitWho").dataset.tone = tone;
 
+  /* autonomous code: say so plainly whenever it is up */
+  const auto = typeof autonomousState === "function" ? autonomousState() : { state: "off" };
+  ["cockpitAuto", "railAuto"].forEach(id => {
+    $(id).hidden = !["on", "standby"].includes(auto.state);
+    $(id).dataset.state = auto.state;
+    $(id).title = auto.detail || "";
+    $(id).title = (auto.detail || "") + " Click to stop it.";
+    $(id).innerHTML = icon("bot") + (id === "railAuto"
+      ? `<span>${auto.state === "on" ? "Autonomous" : "Auto standby"}</span><span class="auto-stop-word">■ Stop</span>`
+      : (auto.state === "on" ? (auto.mine ? " AUTONOMOUS RUN" : " AUTONOMOUS DRIVING") : " Autonomous standby") +
+        `<span class="auto-stop-word">■ Stop</span>`);
+  });
+
   $("railWho").innerHTML = $("controlIcon").innerHTML +
     "<span>" + escapeHtml($("controlTitle").textContent) + "</span>";
   $("railWho").title = $("controlSub").textContent;
@@ -1426,6 +1439,9 @@ function renderCockpitFast() {
   $("cockpitMiniState").hidden = !driveArmed;
   $("cockpitMiniState").textContent = state.textContent;
   $("cockpitMiniState").className = state.className;
+  /* a controller on this device can drive: say how */
+  $("cockpitDeckChip").hidden =
+    !(typeof jpDeckConnected === "function" && jpDeckConnected());
   $("cockpitKeysChip").hidden =
     !(driveArmed && !cockpitPaneShown("controls") && !cockpitTouchLayout());
 

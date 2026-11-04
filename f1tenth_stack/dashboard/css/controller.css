@@ -1,0 +1,804 @@
+/* ==================================================================
+   CONTROLLER.CSS
+   The Controller tab (js/controller.js): a PS4 controller or a Steam Deck
+   drawn live, what is pressed lit up, and the readings beside it.
+
+   Sections:
+      1. Layout and the header
+      2. Colours: dark and light controllers
+      3. The drawing
+      4. Pressed: the glow, each button in its own colour
+      5. Pressed now, deadman, sticks, triggers and the raw arrays
+      6. Map buttons
+   ================================================================== */
+
+/* ------------------------------------------------------------------
+   1. LAYOUT AND THE HEADER
+   ------------------------------------------------------------------ */
+
+.jp-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.65fr) minmax(290px, 1fr);
+  gap: 18px;
+  margin-top: 22px;
+  align-items: start;
+}
+
+@media (max-width: 900px) {
+
+  .jp-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+.jp-title {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.jp-battery {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ok-ink);
+}
+
+.jp-battery[hidden] { display: none; }
+
+.jp-battery .ic { width: 14px; height: 14px; }
+
+.jp-battery[data-tone="warn"] { color: var(--warn-ink); }
+
+.jp-battery[data-tone="bad"]  { color: var(--bad-ink); }
+
+/* PS4 on the car, or a Steam Deck through this browser */
+.jp-source {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  padding: 14px 13px 0;
+}
+
+.jp-source .range-switch {
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.jp-source .range-switch button {
+  padding: 7px 16px;
+}
+
+/* ------------------------------------------------------------------
+   2. COLOURS: DARK AND LIGHT CONTROLLERS
+   A dark controller on the dark page, a white one on the light page.
+   ------------------------------------------------------------------ */
+
+.jp-stage {
+  /* light page: a white DualShock */
+  --jp-body-top: #ffffff;
+  --jp-body: #eef0f3;
+  --jp-body-low: #d3d8de;
+  --jp-body-edge: #b9bfc7;
+  --jp-key: #e6e9ed;
+  --jp-key-hi: #ffffff;
+  --jp-key-edge: #b3b9c1;
+  --jp-ink: #3b414a;
+  --jp-well: #c3c9d0;
+  --jp-well-in: #e1e4e8;
+  --jp-cap: #f3f5f7;
+  --jp-cap-hi: #ffffff;
+  --jp-cap-low: #cdd2d8;
+  --jp-touch-top: #f8f9fb;
+  --jp-touch: #e2e5e9;
+  --jp-hub: rgba(40, 50, 60, .06);
+  --jp-sheen: rgba(255, 255, 255, .9);
+  --jp-ring: rgba(0, 0, 0, .07);
+  --jp-spot: #ffffff;
+  --jp-floor: #eef1f4;
+}
+
+:root[data-theme="dark"] .jp-stage {
+  --jp-body-top: #323842;
+  --jp-body: #22262d;
+  --jp-body-low: #14171b;
+  --jp-body-edge: #3d444e;
+  --jp-key: #20242a;
+  --jp-key-hi: #3b424c;
+  --jp-key-edge: #4b525c;
+  --jp-ink: #d8dde3;
+  --jp-well: #0c0e11;
+  --jp-well-in: #1b1f25;
+  --jp-cap: #2a2f37;
+  --jp-cap-hi: #4b535e;
+  --jp-cap-low: #171a1f;
+  --jp-touch-top: #2a2f37;
+  --jp-touch: #181b20;
+  --jp-hub: rgba(0, 0, 0, .28);
+  --jp-sheen: rgba(255, 255, 255, .1);
+  --jp-ring: rgba(255, 255, 255, .07);
+  --jp-spot: #222a35;
+  --jp-floor: #121417;
+}
+
+@media (prefers-color-scheme: dark) {
+
+  :root:not([data-theme="light"]) .jp-stage {
+    --jp-body-top: #323842;
+    --jp-body: #22262d;
+    --jp-body-low: #14171b;
+    --jp-body-edge: #3d444e;
+    --jp-key: #20242a;
+    --jp-key-hi: #3b424c;
+    --jp-key-edge: #4b525c;
+    --jp-ink: #d8dde3;
+    --jp-well: #0c0e11;
+    --jp-well-in: #1b1f25;
+    --jp-cap: #2a2f37;
+    --jp-cap-hi: #4b535e;
+    --jp-cap-low: #171a1f;
+    --jp-touch-top: #2a2f37;
+    --jp-touch: #181b20;
+    --jp-hub: rgba(0, 0, 0, .28);
+    --jp-sheen: rgba(255, 255, 255, .1);
+    --jp-ring: rgba(255, 255, 255, .07);
+    --jp-spot: #222a35;
+    --jp-floor: #121417;
+  }
+}
+
+/* ------------------------------------------------------------------
+   3. THE DRAWING
+   ------------------------------------------------------------------ */
+
+/* a soft spotlight behind the controller */
+.jp-stage {
+  position: relative;
+  padding: 10px 18px 18px;
+  background: radial-gradient(ellipse 70% 60% at 50% 45%, var(--jp-spot) 0%, var(--jp-floor) 75%);
+}
+
+.jp-defs {
+  position: absolute;
+  width: 0;
+  height: 0;
+  overflow: hidden;
+}
+
+.jp-svg {
+  display: block;
+  width: 100%;
+  /* the whole controller in view on a laptop screen, under the switch */
+  max-width: min(780px, calc((100vh - 470px) * 840 / 540));
+  min-width: min(100%, 420px);
+  height: auto;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+.jp-svg[hidden] {
+  display: none;
+}
+
+.jp-body {
+  fill: url(#jpBodyGrad);
+  stroke: var(--jp-body-edge);
+  stroke-width: 1.5;
+}
+
+.jp-sheen {
+  fill: none;
+  stroke: var(--jp-sheen);
+  stroke-width: 3;
+  stroke-linecap: round;
+}
+
+.jp-grip {
+  fill: none;
+  stroke: var(--jp-body-edge);
+  stroke-width: 1.5;
+  opacity: .55;
+}
+
+.jp-hub {
+  fill: var(--jp-hub);
+}
+
+.jp-key {
+  fill: url(#jpDome);
+  stroke: var(--jp-key-edge);
+  stroke-width: 1.5;
+  transition: fill .08s linear, stroke .08s linear;
+}
+
+.jp-touch {
+  fill: url(#jpPadGrad);
+}
+
+.jp-touch-lines {
+  stroke: var(--jp-ring);
+  stroke-width: 2;
+  stroke-linecap: round;
+}
+
+.jp-well {
+  fill: url(#jpWellGrad);
+  stroke: var(--jp-body-edge);
+  stroke-width: 1;
+}
+
+.jp-stick {
+  fill: url(#jpCapGrad);
+}
+
+/* the concave grip ring on each stick cap */
+.jp-cap-ring {
+  fill: none;
+  stroke: var(--jp-ring);
+  stroke-width: 7;
+  pointer-events: none;
+}
+
+.jp-grille circle {
+  fill: var(--jp-body-low);
+  opacity: .7;
+}
+
+.jp-arrow {
+  fill: var(--jp-ink);
+  opacity: .45;
+  pointer-events: none;
+}
+
+.jp-label {
+  fill: var(--jp-ink);
+  font: 800 16px system-ui, -apple-system, "Segoe UI", sans-serif;
+  text-anchor: middle;
+  pointer-events: none;
+}
+
+.jp-small { font-size: 13px; }
+
+.jp-tiny  { font-size: 10px; letter-spacing: .06em; }
+
+.jp-faint { opacity: .4; }
+
+/* the four face symbols keep their PlayStation colours */
+.jp-sym {
+  fill: none;
+  stroke-width: 3;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.sym-triangle { stroke: #2fc4ad; }
+
+.sym-circle   { stroke: #f0505f; }
+
+.sym-cross    { stroke: #5b8def; }
+
+.sym-square   { stroke: #e57bb8; }
+
+/* the light bar: dim with nothing on /joy, blue when live, orange while a
+   deadman is held */
+.jp-lightbar {
+  fill: #59616b;
+  transition: fill .2s;
+}
+
+.jp-lightbar-glow {
+  fill: #3b82f6;
+  opacity: 0;
+  transition: opacity .25s, fill .2s;
+}
+
+.jp-stage[data-live="true"] .jp-lightbar { fill: #5ea0ff; }
+
+.jp-stage[data-live="true"] .jp-lightbar-glow { opacity: .9; }
+
+.jp-stage[data-held="true"] .jp-lightbar { fill: #ffa04a; }
+
+.jp-stage[data-held="true"] .jp-lightbar-glow { fill: var(--orange); }
+
+/* the Steam Deck's screen and trackpads: drawn, but not read (a browser
+   does not get the trackpads as a controller) */
+.jp-screen {
+  fill: url(#jpScreenGrad);
+  stroke: var(--jp-body-edge);
+  stroke-width: 2;
+}
+
+.jp-screen-gloss {
+  fill: rgba(255, 255, 255, .035);
+}
+
+.jp-pad-area {
+  fill: url(#jpPadGrad);
+  stroke: var(--jp-key-edge);
+  stroke-width: 1.5;
+  stroke-dasharray: 5 4;
+}
+
+.jp-fill {
+  fill: url(#jpFillGrad);
+}
+
+/* nothing on /joy: the drawing greys out under a note */
+.jp-stage[data-live="false"] .jp-svg {
+  opacity: .4;
+  filter: grayscale(1);
+}
+
+.jp-idle {
+  position: absolute;
+  left: 50%;
+  top: 52%;
+  transform: translate(-50%, -50%);
+  width: min(430px, calc(100% - 40px));
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 16px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, .22);
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.jp-idle[hidden] {
+  display: none;
+}
+
+.jp-idle strong {
+  font-size: 15px;
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------------
+   4. PRESSED: THE GLOW, EACH BUTTON IN ITS OWN COLOUR
+   ------------------------------------------------------------------ */
+
+.jp-svg [data-ctl] {
+  --glow: var(--orange);
+  transform-box: fill-box;
+  transform-origin: center;
+  transition: transform .07s ease-out;
+}
+
+.jp-svg [data-ctl="triangle"] { --glow: #2fc4ad; }
+
+.jp-svg [data-ctl="circle"]   { --glow: #f0505f; }
+
+.jp-svg [data-ctl="cross"]    { --glow: #4f86f7; }
+
+.jp-svg [data-ctl="square"]   { --glow: #e46db2; }
+
+/* buttons press in a little; triggers and sticks show it otherwise */
+.jp-svg [data-ctl].on:not(.jp-trigger):not(.jp-stick-g) {
+  transform: scale(.93);
+}
+
+.jp-svg [data-ctl].on .jp-key {
+  fill: var(--glow);
+  stroke: var(--glow);
+  filter: url(#jpGlow);
+}
+
+.jp-svg [data-ctl].on .jp-label,
+.jp-svg [data-ctl].on .jp-arrow {
+  fill: #fff;
+  opacity: 1;
+}
+
+.jp-svg [data-ctl].on .jp-sym {
+  stroke: #fff;
+}
+
+/* a pressed stick keeps its cap and gets a glowing rim */
+.jp-svg .jp-stick-g.on .jp-key {
+  fill: url(#jpCapGrad);
+  stroke: var(--glow);
+  stroke-width: 4;
+}
+
+/* a trigger shows how far it is in by its fill; its outline lights */
+.jp-svg .jp-trigger.on .jp-key {
+  fill: url(#jpDome);
+  stroke: var(--glow);
+  stroke-width: 2.5;
+  filter: none;
+}
+
+.jp-svg .jp-trigger.on .jp-label {
+  fill: var(--jp-ink);
+}
+
+/* Map buttons: the one being asked for pulses blue */
+.jp-svg [data-ctl].ask .jp-key {
+  stroke: var(--link);
+  stroke-width: 4;
+  animation: jp-ask 1s ease-in-out infinite;
+}
+
+@keyframes jp-ask {
+  50% { stroke-opacity: .2; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .jp-svg [data-ctl].ask .jp-key { animation: none; }
+  .jp-svg [data-ctl] { transition: none; }
+}
+
+/* ------------------------------------------------------------------
+   5. PRESSED NOW, DEADMAN, STICKS, TRIGGERS AND THE RAW ARRAYS
+   ------------------------------------------------------------------ */
+
+.jp-side {
+  padding-bottom: 14px;
+}
+
+.jp-held {
+  list-style: none;
+  margin: 0;
+  padding: 12px 13px 4px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 44px;
+}
+
+.jp-held li {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 6px;
+  padding: 5px 11px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #ff9a3c, var(--orange));
+  box-shadow: 0 2px 8px color-mix(in srgb, var(--orange) 35%, transparent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.jp-held li.jp-none {
+  background: transparent;
+  box-shadow: none;
+  color: var(--muted);
+  font-weight: 600;
+  padding-left: 0;
+}
+
+.jp-idx {
+  font: 600 11px monospace;
+  opacity: .85;
+}
+
+.jp-role {
+  font-size: 11px;
+  font-weight: 600;
+  opacity: .9;
+}
+
+.jp-deadman {
+  margin: 8px 13px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--unknown);
+  border-radius: 10px;
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text-2);
+  transition: border-color .15s, background-color .15s;
+}
+
+.jp-deadman.held {
+  border-left-color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 8%, transparent);
+  color: var(--text);
+}
+
+.jp-deadman.wrong {
+  border-left-color: var(--failed);
+  background: var(--failed-soft);
+  color: var(--text);
+}
+
+.jp-sub {
+  margin: 18px 13px 8px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.jp-axes {
+  display: grid;
+  gap: 8px;
+  padding: 0 13px;
+}
+
+/* each stick as a little map */
+.jp-minis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.jp-mini {
+  margin: 0;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel-soft);
+}
+
+.jp-mini svg {
+  flex: none;
+  width: 64px;
+  height: 64px;
+}
+
+.jp-mini-ring {
+  fill: none;
+  stroke: var(--border);
+  stroke-width: 2;
+}
+
+.jp-mini-axis {
+  stroke: var(--border-soft);
+  stroke-width: 1.5;
+}
+
+.jp-mini-dot {
+  fill: var(--orange);
+  filter: drop-shadow(0 0 5px color-mix(in srgb, var(--orange) 70%, transparent));
+}
+
+.jp-mini figcaption {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.jp-mini figcaption b {
+  font-size: 13px;
+  color: var(--text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* each trigger as a bar */
+.jp-bar {
+  display: grid;
+  grid-template-columns: 28px 1fr 42px;
+  align-items: center;
+  gap: 10px;
+  font-size: 13px;
+}
+
+.jp-bar span {
+  font-weight: 800;
+}
+
+.jp-bar i {
+  height: 10px;
+  border-radius: 999px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  overflow: hidden;
+}
+
+.jp-bar i b {
+  display: block;
+  height: 100%;
+  border-radius: 999px;
+  background: linear-gradient(90deg, #ffb347, var(--orange));
+  transition: width .06s linear;
+}
+
+.jp-bar em {
+  font-style: normal;
+  font-weight: 700;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.jp-raw {
+  display: grid;
+  gap: 8px;
+  padding: 0 13px;
+}
+
+.jp-raw-k {
+  display: block;
+  margin-bottom: 4px;
+  font: 600 11.5px monospace;
+  color: var(--muted);
+}
+
+.jp-raw-v {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  font-size: 12px;
+}
+
+.jp-chip {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 4px;
+  min-width: 34px;
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  font: 600 11.5px monospace;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-2);
+}
+
+.jp-chip i {
+  font-style: normal;
+  font-size: 9.5px;
+  color: var(--muted);
+}
+
+.jp-chip.on {
+  border-color: var(--orange);
+  background: color-mix(in srgb, var(--orange) 18%, transparent);
+  color: var(--text);
+}
+
+/* a button switching on and off by itself */
+.jp-flicker {
+  margin: 8px 13px 0;
+  padding: 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--failed) 45%, transparent);
+  border-left: 4px solid var(--failed);
+  border-radius: 10px;
+  background: var(--failed-soft);
+  font-size: 12.5px;
+  line-height: 1.45;
+  color: var(--text);
+}
+
+.jp-flicker[hidden] {
+  display: none;
+}
+
+.jp-chip.flicker {
+  border-color: var(--failed);
+  background: repeating-linear-gradient(135deg,
+    color-mix(in srgb, var(--failed) 22%, transparent) 0 4px, transparent 4px 8px);
+  color: var(--text);
+}
+
+/* ------------------------------------------------------------------
+   6. MAP BUTTONS
+   ------------------------------------------------------------------ */
+
+.jp-map-note {
+  margin: 0 13px 8px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+/* "this controller probably numbers its buttons differently" */
+.jp-map-note.warn {
+  padding: 8px 10px;
+  border-left: 4px solid var(--degraded);
+  border-radius: 6px;
+  background: var(--degraded-soft);
+  color: var(--text);
+}
+
+.jp-map-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  padding: 0 13px;
+}
+
+.jp-map-actions [hidden] {
+  display: none;
+}
+
+.jp-wizard {
+  margin: 10px 13px 0;
+  padding: 12px;
+  border: 1px solid var(--link);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--link) 8%, transparent);
+}
+
+.jp-wizard[hidden] {
+  display: none;
+}
+
+.jp-wizard .jp-map-actions {
+  padding: 0;
+  margin-top: 10px;
+}
+
+.jp-wizard-step {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.jp-wizard-hint {
+  margin-top: 4px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* a remap just done */
+.jp-map-note.done {
+  padding: 8px 10px;
+  border-left: 4px solid var(--healthy);
+  border-radius: 6px;
+  background: var(--healthy-soft);
+  color: var(--text);
+}
+
+/* Remap one: a picker, or a click on the drawing */
+.jp-map-one {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 10px;
+  padding: 0 13px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.jp-map-one[hidden] {
+  display: none;
+}
+
+.jp-map-one label {
+  font-weight: 700;
+}
+
+.jp-map-one select {
+  min-width: 0;
+  max-width: 190px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+  font: inherit;
+}
+
+.jp-map-tip {
+  color: var(--muted);
+}
+
+/* every control on the drawing can be clicked to remap it */
+.jp-svg [data-ctl] {
+  cursor: pointer;
+}
+
+@media (hover: hover) {
+
+  .jp-svg [data-ctl]:hover:not(.on) .jp-key {
+    stroke: var(--link);
+    stroke-width: 2.5;
+  }
+}
+

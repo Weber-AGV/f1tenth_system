@@ -245,6 +245,41 @@ function radarCurrent() {
    Called by drawScanCanvas (metrics.js) when the view is Detailed.
 ========================================================== */
 
+/* The robot's obstacle stop (drive.js obstacleZone): the corridor ahead
+   that has to stay clear for the car to stop, orange, red when something is
+   in it. A rectangle in front of the LiDAR, drawn through P like the scan. */
+function drawObstacleZone(ctx, P, px, font) {
+
+  const zone = typeof obstacleZone === "function" ? obstacleZone() : null;
+
+  if (!zone) return;
+
+  const { length: L, halfWidth: hw } = zone;
+  const at = (x, y) => P(Math.atan2(y, x), Math.hypot(x, y));
+  const corners = [at(0.01, hw), at(L, hw), at(L, -hw), at(0.01, -hw)];
+  const color = zone.hit ? "255, 77, 77" : "255, 145, 40";
+
+  ctx.save();
+  ctx.beginPath();
+  corners.forEach((p, k) => (k ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+  ctx.closePath();
+  ctx.fillStyle = `rgba(${color}, ${zone.hit ? 0.28 : 0.14})`;
+  ctx.fill();
+  ctx.setLineDash([5 * px, 4 * px]);
+  ctx.strokeStyle = `rgba(${color}, 0.9)`;
+  ctx.lineWidth = 1.5 * px;
+  ctx.stroke();
+  ctx.setLineDash([]);
+
+  const tip = at(L, 0);
+  ctx.fillStyle = `rgb(${color})`;
+  ctx.font = `700 ${font}px system-ui, sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "bottom";
+  ctx.fillText(`stop zone ${L.toFixed(1)} m`, tip.x, tip.y - 4 * px);
+  ctx.restore();
+}
+
 function drawRadarScan(canvas, scaleState, selLo, selHi) {
 
   const ctx = canvas.getContext("2d");
@@ -359,6 +394,8 @@ function drawRadarScan(canvas, scaleState, selLo, selHi) {
   });
   ctx.setLineDash([]);
   ctx.globalAlpha = live ? 1 : 0.4;
+
+  drawObstacleZone(ctx, P, px, font);
 
   if (result) {
 

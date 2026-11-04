@@ -12,6 +12,7 @@ const checks = [
   ['System list, joystick check, connection banners', 'node', [here('verify_system.mjs')]],
   ['Camera proxy: newest-frame relay', 'python3', [here('../../f1tenth_stack/camera_http.py'), '--self-test']],
   ['Robot side: e-stop, joystick, parsers, disconnect', 'python3', [here('../../f1tenth_stack/system_diagnostics.py'), '--self-test']],
+  ['Restart: reading the run or the bringup, refusing a second one', 'python3', [here('../../f1tenth_stack/restart_stack.py'), '--self-test']],
 ];
 
 let failed = 0;

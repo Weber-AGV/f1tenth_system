@@ -73,6 +73,7 @@ On the right of the banner:
 | **Subsystems** | How many of the 7 subsystems are healthy |
 | **Control** | Who the motor mux is listening to: **Idle** (no one, normal at rest), **Joystick**, or **Navigation / web** (autonomous code or a dashboard) |
 | **Nodes** | How many of the 12 expected ROS nodes are running |
+| **Autonomous** | Whether autonomous code is driving the car: **Off** (green: nothing autonomous is running), **Standby** (amber: an autonomous node is up and can publish `/drive`, but is not sending commands), or **Driving** (red, pulsing: it is sending commands now). Point at it to see which node. A dashboard driving the car does not count, except this page's own **autonomous run**. **Stop** beside it ends this page's run, or stops a `ros2 topic pub` on the car and sends zero speed (see [the Drive guide](drive-tab.md#stopping-autonomous-code-on-the-car)) |
 | **Connected** | How many people have the dashboard open: *Just you*, *3 people*. Turns amber at 8 and red over 10 (see [Too many people connected](#too-many-people-connected)) |
 
 **Last updated** (top right) is the last time the page heard from the car.
@@ -168,6 +169,7 @@ The live picture from the car's camera. **It connects on its own** whenever the 
 - **LIVE** in the corner means pictures are arriving. *no stream* means none are.
 - **Take Picture** freezes the current frame below the stream. **Save PNG** downloads it.
 - **Record** records the camera to a video file; press it again (**Stop**) to save it. See [Recording the camera](drive-tab.md#recording-the-camera).
+- **The stream pauses when no tab or pane shows the picture** (another tab, the Camera pane closed, or the browser tab in the background), so it does not use the car's Wi-Fi for nothing, and opens again when the picture is back on screen. A recording keeps it going. **Take Picture** and **Record** open it again by themselves ("Opening the camera…").
 
 ![A picture taken](images/overview-tab/11-snapshot.jpg)
 
@@ -249,7 +251,7 @@ The page cannot reach the car's rosbridge. The banner says what it tried and wha
 
 ### NO DATA FROM THE ROBOT
 
-A red strip under the header: the connection is open but nothing has arrived for 4 seconds. The car may have lost Wi-Fi, or its rosbridge may be stuck. The page may be showing old numbers until it clears.
+A red strip under the header: the connection is open but nothing has arrived for 4 seconds. The car may have lost Wi-Fi, or its rosbridge may be stuck. The page may be showing old numbers until it clears. If it does not clear, **Restart the dashboard on the car** on the strip restarts everything on the car and reloads the page when it is back (see [the Advanced guide](advanced-tab.md#restart-the-dashboard-on-the-car)).
 
 ### Too many people connected
 

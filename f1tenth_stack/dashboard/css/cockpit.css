@@ -2787,6 +2787,202 @@ body:has(.cockpit.full:not([hidden])) {
   display: none;
 }
 
+/* autonomous code: driving (red, pulsing) or standing by (amber) */
+.cockpit .auto-chip[hidden] {
+  display: none;
+}
+
+.cockpit .auto-chip[data-state="standby"] {
+  color: var(--degraded);
+  border: 1px solid color-mix(in srgb, var(--degraded) 50%, transparent);
+}
+
+.cockpit .auto-chip[data-state="on"] {
+  background: var(--failed);
+  color: #fff;
+  font-weight: 800;
+  animation: auto-chip-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes auto-chip-pulse {
+  50% { box-shadow: 0 0 0 4px color-mix(in srgb, var(--failed) 35%, transparent); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cockpit .auto-chip[data-state="on"] { animation: none; }
+}
+
+/* in the rail: under who is driving (as specific as it takes to outweigh
+   .cockpit button.auto-chip's font: inherit, which made it 16px) */
+.cockpit button.rail-auto.auto-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 2px;
+  border-radius: 8px;
+  font-size: 10.5px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.cockpit .rail-auto .ic {
+  width: 16px;
+  height: 16px;
+}
+
+/* the autonomous chips are Stop buttons */
+.cockpit button.auto-chip {
+  font: inherit;
+  cursor: pointer;
+}
+
+.cockpit .auto-chip .auto-stop-word {
+  margin-left: 8px;
+  padding: 1px 7px;
+  border-radius: 6px;
+  background: rgba(0, 0, 0, .28);
+  font-weight: 800;
+}
+
+.cockpit .rail-auto .auto-stop-word {
+  margin: 3px 0 0;
+}
+
+.cockpit .auto-chip[data-state="standby"] {
+  background: rgba(58, 49, 16, .85);
+}
+
+/* --- hold to drive, or an autonomous run --- */
+.cockpit-panel .drive-mode {
+  display: flex;
+  flex: none;                 /* the card is a column: never squash it */
+  height: 34px;
+  margin: 10px 0 8px;
+}
+
+.cockpit-panel .drive-mode button {
+  flex: 1;
+}
+
+.auto-panel {
+  display: none;
+  flex: none;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+  padding: 10px;
+  border: 1px solid rgba(255, 121, 0, .45);
+  border-radius: 12px;
+  background: rgba(255, 121, 0, .08);
+}
+
+.cockpit-panel[data-mode="auto"] .auto-panel {
+  display: flex;
+}
+
+/* the pad has nothing to do in an autonomous run; STOP stays */
+.cockpit-panel[data-mode="auto"] .drive-pad {
+  display: none;
+}
+
+.auto-warn {
+  margin: 0;
+  font-size: 12px;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, .78);
+}
+
+.auto-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  font-size: 13px;
+}
+
+.auto-row label {
+  white-space: nowrap;
+}
+
+.auto-row select {
+  padding: 5px 8px;
+  border: 1px solid rgba(255, 255, 255, .25);
+  border-radius: 7px;
+  background: rgba(0, 0, 0, .4);
+  color: #fff;
+  font: inherit;
+}
+
+.auto-row .link-btn {
+  margin-left: auto;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: #8cbcff;
+  white-space: nowrap;
+}
+
+.auto-go {
+  min-height: 42px;
+  border: 0;
+  border-radius: 10px;
+  background: linear-gradient(180deg, #ff9a3c, var(--orange));
+  color: #fff;
+  font: inherit;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.auto-go.running {
+  background: var(--failed);
+  animation: auto-chip-pulse 1.2s ease-in-out infinite;
+}
+
+/* the panel's own switches: compact, on the panel's orange tint */
+.auto-panel .auto-switch {
+  padding: 7px 10px;
+  border-color: rgba(255, 255, 255, .16);
+  background: rgba(0, 0, 0, .25);
+}
+
+.auto-panel .auto-switch .cockpit-switch-text span {
+  color: rgba(255, 255, 255, .7);
+}
+
+/* the obstacle stop: its own box, green while it watches */
+.auto-guard {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.auto-guard[data-state="on"] .auto-switch {
+  border-color: rgba(74, 222, 128, .5);
+}
+
+.auto-guard[data-state="off"] .auto-switch {
+  border-color: rgba(255, 193, 7, .55);
+}
+
+/* full speed: the slider shows the speed but is not the one in charge */
+.auto-panel .slider-row.locked input {
+  opacity: .45;
+}
+
+.auto-status {
+  min-height: 16px;
+  font-size: 12.5px;
+  color: rgba(255, 255, 255, .75);
+  font-variant-numeric: tabular-nums;
+}
+
+.auto-status.running {
+  color: #fff;
+  font-weight: 700;
+}
+
 /* ------------------------------------------------------------------
    14. RECORDING
    ------------------------------------------------------------------ */

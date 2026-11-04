@@ -703,3 +703,15 @@ tr.topic-detail pre {
 .log-entry.error {
   color: var(--bad-ink);
 }
+
+
+/* the second check under the first one's result */
+#joyResult ~ .check-row {
+  margin-top: 14px;
+}
+
+/* restarting the car's dashboard: set apart as the one that disrupts */
+.check-btn.restart-btn {
+  border-color: color-mix(in srgb, var(--failed) 55%, transparent);
+  color: var(--bad-ink);
+}

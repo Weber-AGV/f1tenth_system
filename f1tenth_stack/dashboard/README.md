@@ -105,7 +105,8 @@ Topic states and why a quiet topic is not always a fault are under [Topics](#top
 Step-by-step guides to each tab, with a screenshot of everything they describe. They are for people using the page; this README is for people changing it.
 
 - [Overview tab](docs/guides/overview-tab.md): connecting to a car, the 10-second check, battery and computer tiles, subsystems, the camera and the LiDAR card.
-- [Drive tab](docs/guides/drive-tab.md): arming, driving with the keys, pad or a phone, full screen, arranging the view, recording the camera, and what stops the car.
+- [Drive tab](docs/guides/drive-tab.md): arming, driving with the keys, pad or a phone, full screen, arranging the view, recording the camera, autonomous runs and the obstacle stop, and what stops the car.
+- [Controller tab](docs/guides/controller-tab.md): the controller drawn live from `/joy`, the deadman check, mapping the buttons, and a Steam Deck.
 - [Advanced tab](docs/guides/advanced-tab.md): the robot's own checks, nodes, topics, ROS diagnostics, and the joystick check.
 
 ## Ranges: what is green, yellow and red
@@ -224,7 +225,7 @@ Shows how hot the Jetson's chip is. It slows itself down at 70 C and 99 C and sh
 - The Temperature tile's rows, on the page, each graded with the same 70 and 85 C; the tile takes the worst row, including the VESC's FET row.
 
 **Why these lines.** They come from the Jetson's own trip points, read on robot
-#2: it slows itself down at 70 C and 99 C, and shuts off at 104.5 C. Idle is about
+2: it slows itself down at 70 C and 99 C, and shuts off at 104.5 C. Idle is about
 50 C. Yellow marks the first slowdown; red leaves about 14 C before the second. Not measured on a long drive. Signed off by the professor as a starting value; see [Ranges](#ranges-what-is-green-yellow-and-red).
 
 **What is sent.** Report `system: Thermal`, one key per zone named as the zone (`tj-thermal`, `cpu-thermal`, `gpu-thermal`, `soc0-thermal`...), values like `46.1 C`.
@@ -492,7 +493,7 @@ Shows how fast the car is going, and whether odometry is working.
 
 ### Controller
 
-Shows whether the PS4 controller is connected and whether ROS can read it. The physical controller is the car's backup stop, so the page says plainly when there is none.
+Shows whether the PS4 controller is connected and whether ROS can read it. The physical controller is the car's backup stop, so the page says plainly when there is none. The Controller tab draws it live from `/joy`; on these cars (the Jetson kernel has no Sony driver, so the pad is a generic HID device) `/joy` numbers it Square 0, Cross 1, Circle 2, Triangle 3, L1 4, R1 5, L2 6 (and axis 3), R2 7 (and axis 4), Share 8, Options 9, L3 10, R3 11, PS 12, touchpad 13, with the right stick on axes 2 and 5, measured on robot 2. That is the tab's default mapping (`dashboard/js/controller.js`).
 
 **Where it comes from.**
 
@@ -630,13 +631,53 @@ Stops the car if the page loses its connection while driving.
 
 Stops the car for everyone (the controller, any page, autonomous code) until someone releases it.
 
-**How it works.** The button calls the service `/system_diagnostics/emergency_stop`. On the robot, the node finds `ackermann_to_vesc_node` with `pgrep` and freezes it (`SIGSTOP`). Every input reaches the motor through that one node. The node then publishes speed 0 on `/commands/motor/speed` 50 times a second. Release calls `/system_diagnostics/emergency_release`, which unfreezes the node (`SIGCONT`); it is refused, on the page and on the robot, while anyone holds L1 or R1, so the car never resumes into a live command.
+**How it works.** The button calls the service `/system_diagnostics/emergency_stop`. On the robot, the node publishes `true` on `/emergency_stop`, a lock in `config/mux.yaml`: while it is true, `ackermann_mux` forwards no input at all, because its priority (255) is above the controller's (100) and `/drive`'s (10). The node also publishes speed 0 on `/commands/motor/speed` 50 times a second (and the lock again with each, so a mux that restarts mid-stop is locked again), so the VESC brakes to a stop and keeps getting a command. Release calls `/system_diagnostics/emergency_release`, which publishes `false`; it is refused, on the page and on the robot, while anyone holds L1 or R1, so the car never resumes into a live command. A refused release is logged on the car too.
 
-**What is sent.** Report `system: E-stop`: level 2 while on, with keys `since` and `action` (what the robot did, such as "froze ackermann_to_vesc_node (pid 1234)").
+The lock in `config/mux.yaml`:
+
+```yaml
+    locks:
+      emergency_stop:
+        topic   : emergency_stop
+        timeout : 0.0      # never expires: only true locks it
+        priority: 255
+```
+
+**Why a lock.** The first version froze `ackermann_to_vesc_node` (`SIGSTOP`), the one node every input passes through. Measured on robot 2 on 2026-11-04: after a stop of about 90 s that node sometimes came back deaf (listed as `_NODE_NAME_UNKNOWN_`, publishing nothing), and the car could not drive at all until bringup restarted. With the lock nothing is frozen: a stop held 86 s on robot 2, with L1 held throughout, forwarded nothing, and the controller drove straight after the release. A car whose `mux.yaml` has no lock (nothing subscribes to `/emergency_stop`) still gets the freeze, as a fallback.
+
+**What is sent.** Report `system: E-stop`: level 2 while on, with keys `since`, `action` (what the robot did, such as "locked the mux (/emergency_stop)") and `method` (`mux lock` or `SIGSTOP`).
 
 **On the page.** The red Emergency stop banner, on every open page, from that report.
 
-**To change.** `emergency_stop()`, `emergency_release()` and `estop_hold()` in `f1tenth_stack/system_diagnostics.py`; `ESTOP_HZ = 50.0` for the hold rate; the page side is `dashboard/js/estop.js`.
+**To change.** `engage_estop()`, `emergency_release()` and `estop_hold()` in `f1tenth_stack/system_diagnostics.py`; `ESTOP_HZ = 50.0` for the hold rate, `ESTOP_LOCK_TOPIC` for the lock's topic (it must match `config/mux.yaml`); the page side is `dashboard/js/estop.js`.
+
+---
+
+### Autonomous run and obstacle stop
+
+Drives the car at a set speed and steering from the page, the way `ros2 topic pub /drive ... -r 10` would, and stops it before it hits something ahead.
+
+**How it works.** In the Drive tab's Autonomous run mode the page publishes `/drive` (marked `header.frame_id = "dashboard_auto"`) 50 times a second at the panel's speed and steering, for a set time or until stopped. With **Hold R1 to run**, R1 held for half a second starts it and letting go stops it. **With a controller connected to the car, R1 must be held**: `config/joy_teleop.yaml`'s `default` command sends zero speed on `/teleop` with every `/joy` message, and the mux puts `/teleop` (100) ahead of `/drive` (10), so `/drive` only gets through while R1, the autonomous deadman, is held. The page shows this by switching Hold R1 to run on, locked, while `/joy` is coming in.
+
+The obstacle stop runs on the robot: while anything drives the car forward through `/drive` (the page's run, a `ros2 topic pub`, your own node), `system_diagnostics` reads `/scan` and finds the closest return in a 0.4 m wide corridor ahead (the third closest, so a stray return does not count). If it is closer than the distance the car needs to stop (a margin, plus 0.15 s of travel, plus braking at 4 m/s²), it turns the [emergency stop](#emergency-stop) on. Something right beside the LiDAR reads as "right at the LiDAR". It does nothing while L1 is held or for the page's hold-to-drive, and it stops the car if no scan has arrived for 0.5 s while driving forward.
+
+**Stop autonomous** (the indicator in the status bar, top bar and side rail) ends the page's run, and also stops a `ros2 topic pub /drive` on the car: the service `/system_diagnostics/stop_autonomous` finds its process from its `_ros2cli_<pid>` node name, sends it SIGINT (SIGKILL after 1.5 s) and sends zero speed. Any other node publishing `/drive` is named, not killed.
+
+**What is sent.** Report `system: Obstacle stop`: `enabled`, `margin m`, `reaction s`, `decel m/s2`, `corridor m`, `ahead m`, `scan age s`. The page sets the switch and margin through the node's own parameters (`obstacle_stop`, `obstacle_margin`, 0.1 to 2.0 m).
+
+**On the page.** The Controls card's Autonomous run panel; the stop zone drawn on the LiDAR views; the Autonomous indicator. The [Drive guide](docs/guides/drive-tab.md#autonomous-run) shows each.
+
+**To change.** `OBSTACLE_MARGIN_M`, `OBSTACLE_DECEL`, `OBSTACLE_HALF_WIDTH_M`, `OBSTACLE_MIN_POINTS` and `obstacle_verdict()` in `f1tenth_stack/system_diagnostics.py`; the run itself is in `dashboard/js/drive.js`.
+
+---
+
+### Restart the dashboard on the car
+
+Stops and starts again every node on the car, from the page: for when the page lags or stops updating.
+
+**How it works.** The button calls `/system_diagnostics/restart_stack`; when rosbridge does not answer, it asks `camera_http` instead (`POST /restart` on port 8082, body `restart`). Both use `f1tenth_stack/restart_stack.py`, which finds the running `ros2 launch f1tenth_stack bringup_launch.py`, stops it as Ctrl+C would, waits up to 20 s, removes any node it left behind, and starts it again with the same `name:=value` arguments, in its own session so it survives the stop. The restarted bringup has no terminal: stop it by hand with `pkill -INT -f "ros2 launch f1tenth_stack bringup_launch.py"`. It is refused while the emergency stop is on, while L1 or R1 is held, or while a dashboard is driving. Its output goes to `/tmp/f1tenth-diag/restart.log`. Tested on robot 6: the new bringup was up 12 s after the request, with one of each node and nothing left from the old one.
+
+**To change.** `f1tenth_stack/restart_stack.py` (`BRINGUP_STOP_S`, `BRINGUP_LEFTOVERS`); the page side is in `dashboard/js/checks.js`.
 
 ---
 
@@ -749,10 +790,13 @@ Written down so nobody spends a session re-checking them. Each one was tried on 
 
 Apart from these, the page only reads. Each links to its full entry above.
 
-- **[Emergency stop](#emergency-stop)** stops the car for everyone, including whoever holds the physical controller. Every input reaches the motor through `ackermann_to_vesc_node`, so `system_diagnostics` freezes that node and commands speed 0 at 50 Hz. A red banner shows on every open page until someone presses **Release**, which is refused while L1 or R1 is held, so the car never resumes into a live command.
+- **[Emergency stop](#emergency-stop)** stops the car for everyone, including whoever holds the physical controller. `system_diagnostics` locks `ackermann_mux` (`/emergency_stop`, a lock in `config/mux.yaml`), so no input is forwarded, and commands speed 0 at 50 Hz. A red banner shows on every open page until someone presses **Release**, which is refused while L1 or R1 is held, so the car never resumes into a live command.
 - **[Driving from the page](#driving-from-the-page)** (Drive tab, or full screen) publishes to `/drive`, the mux's navigation input, 50 times a second, only while armed ("area is clear" ticked) and while a key, the pad or a phone's thumb stick is held. Letting go sends 5 zero-speed commands. 3 m/s and 19 degrees by default; 5 m/s and 23.5 degrees need a warning dialog. The physical controller has a higher priority in the mux, so holding its deadman always wins. L1 is the deadman for manual driving, R1 for autonomous (`/drive`).
 - **The [drive watchdog](#drive-watchdog)** stops the car if the page loses its connection mid-drive: if the last `/drive` command was moving and nothing arrives for 0.3 s, `system_diagnostics` sends 5 zeros, marked `header.frame_id = "drive_watchdog"`. Measured on robot 6: zeros 0.31 to 0.51 s after the link was cut. 0.3 s is longer than the mux's 0.2 s timeout, so it never cuts off a publisher that is still working.
 - **Disconnect controller** ([Controller](#controller)) drops the controller's Bluetooth link. Refused while L1 or R1 is held.
+- **[Autonomous run](#autonomous-run-and-obstacle-stop)** publishes `/drive` at a set speed and steering; with a controller connected it drives only while R1 is held. **Stop autonomous** also stops a `ros2 topic pub /drive` on the car (SIGINT to that process).
+- **[Obstacle stop](#autonomous-run-and-obstacle-stop)** turns the emergency stop on when something ahead is inside the stopping distance while `/drive` drives forward.
+- **[Restart the dashboard on the car](#restart-the-dashboard-on-the-car)** stops and starts bringup again. Refused while the car could be moving.
 - **Run joystick check** (Advanced tab, [Controller](#controller)) tells apart the three causes of a silent `/joy`: no controller, a working one, or one ROS has no permission to read.
 
 ## Changing things

@@ -72,11 +72,18 @@ const CAMERA_NO_FRAME_S = 3;
 /* header.frame_id on the robot's drive watchdog zeros */
 const DRIVE_WATCHDOG_FRAME = "drive_watchdog";
 
+/* header.frame_id on this page's own /drive commands: the robot's obstacle
+   stop watches an autonomous run, not driving by hand (system_diagnostics.py
+   DASHBOARD_MANUAL_FRAME) */
+const DASHBOARD_MANUAL_FRAME = "dashboard_manual";
+const DASHBOARD_AUTO_FRAME = "dashboard_auto";
+
 const SYS_PREFIX = "system: ";
 
 const SYS_ORDER = [
   "E-stop",
   "Drive watchdog",
+  "Obstacle stop",
   "Thermal",
   "Power",
   "CPU",
@@ -91,6 +98,10 @@ const SYS_ORDER = [
 ];
 
 const JOY_SERVICE = "/system_diagnostics/joystick_check";
+const RESTART_SERVICE = "/system_diagnostics/restart_stack";
+const STOP_AUTO_SERVICE = "/system_diagnostics/stop_autonomous";
+/* the node's own ROS parameter service: obstacle_stop, obstacle_margin */
+const SYSDIAG_PARAMS_SERVICE = "/system_diagnostics/set_parameters";
 
 const EXPECTED_NODES = [
   "/joy",

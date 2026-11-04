@@ -14,7 +14,8 @@ const el = id => els[id] || (els[id] = {
   classList: { _s: new Set(), add(c) { this._s.add(c); }, remove(c) { this._s.delete(c); },
                toggle(c, on) { on ? this._s.add(c) : this._s.delete(c); }, contains(c) { return this._s.has(c); } }
 });
-const document = { getElementById: el };
+// querySelectorAll finds nothing: these checks never click a button
+const document = { getElementById: el, querySelectorAll: () => [] };
 
 let callImpl = async () => ({});
 const env = new Function('document', 'getCall', `

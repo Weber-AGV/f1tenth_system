@@ -18,11 +18,12 @@ This guide is for **people driving the car**. How the commands reach the motors,
 6. [Seeing what is around the car](#seeing-what-is-around-the-car)
 7. [Arranging the view](#arranging-the-view)
 8. [Recording the camera](#recording-the-camera)
-9. [Speed and steering limits](#speed-and-steering-limits)
-10. [On a phone](#on-a-phone)
-11. [Keyboard](#keyboard)
-12. [Troubleshooting](#troubleshooting)
-13. [How a command reaches the car](#how-a-command-reaches-the-car)
+9. [Autonomous run](#autonomous-run)
+10. [Speed and steering limits](#speed-and-steering-limits)
+11. [On a phone](#on-a-phone)
+12. [Keyboard](#keyboard)
+13. [Troubleshooting](#troubleshooting)
+14. [How a command reaches the car](#how-a-command-reaches-the-car)
 
 ## Before you drive
 
@@ -52,6 +53,7 @@ Status on the left, actions on the right, Emergency stop last and set apart so i
 | **Latency** | The round trip from this page to the car and back, every 2 s. Green under 50 ms, amber from 50 ms, red from 120 ms. Each command takes about half of it to arrive (see [Why the controller feels quicker](#why-the-controller-feels-quicker)) |
 | **Disconnect controller** | Shown while a physical controller is connected. Drops its Bluetooth link; press the PS button on the controller to reconnect. Refused while someone holds L1 or R1 |
 | **Who is driving** | One answer: *Nobody is driving*, *You're armed*, *You are driving*, *The controller is driving*, *Someone else is driving*, *Autonomous code is driving*, or *Emergency stop is on* |
+| **AUTONOMOUS DRIVING** / **Autonomous standby** | Shown only while autonomous code is up: red and pulsing while it is driving the car, amber while it is running but not sending commands. Holding L1 on the controller overrides it; Emergency stop stops it. It is in the side rail too |
 | **Camera · LiDAR · Controls** | Which panes show. Orange means on |
 | **Record** | Records the camera to a video file; press again to stop and save it (see [Recording the camera](#recording-the-camera)) |
 | **Settings** | Everything about how the view looks (see [Arranging the view](#arranging-the-view)) |
@@ -96,6 +98,7 @@ Pick whichever is easiest; they all do the same thing.
 - **The pad**: press and drag the knob. Up is forward, down is reverse, left and right steer. How far you drag sets how fast and how hard.
 - **The keyboard**: hold **W A S D** or the **arrow keys**.
 - **On a phone**: the two thumb sticks (see [On a phone](#on-a-phone)).
+- **On a Steam Deck** (or a controller plugged into your computer): the left stick is speed and the right stick steers; pushing a stick is the deadman, so centring them stops the car. **B** stops and disarms. Holding **L1** with the sticks works too, and is what drives a controller the browser does not map as standard. Setting it up is in [the Controller guide](controller-tab.md#steam-deck-drive-from-its-browser).
 
 **The car only moves while you hold.** Let go and it stops at once: the page sends a burst of zero-speed commands immediately, without ramping down.
 
@@ -233,6 +236,62 @@ On a phone, hiding the bar keeps a small cluster in the corner instead: the **AR
 
 Press it again to stop: the video downloads straight away, named by when it started, for example `camera-2026-10-26-14-03-22.mp4` (`.webm` in browsers that cannot make MP4). The recording happens in your browser from the picture already on screen, so it adds nothing to the car's Wi-Fi. A recording stops by itself after 15 minutes, because it is held in the browser's memory until it is saved. The page asks before closing while a recording runs.
 
+## Autonomous run
+
+![An autonomous run from the page: 0.5 m/s, 6° left, 4 s left](images/drive-tab/24-autonomous-run.jpg)
+
+The car can drive itself at a set speed and steering, with nothing held: what
+
+```bash
+ros2 topic pub /drive ackermann_msgs/msg/AckermannDriveStamped "{drive: {speed: 0.2, steering_angle: 0}}" -r 10
+```
+
+does on the car, but from the page.
+
+1. In the Controls card, switch **Hold to drive** to **Autonomous run**.
+2. **Full speed** (on by default) drives forward at your **Max speed**, the same top speed as full stick with L1 held. Turn it off to set **Speed** with the slider (forward or, below zero, reverse). Set **Steering** too. Both are limited by Max speed and Max steering, and both can be changed **while it runs**. Full speed is remembered in this browser.
+3. Pick **Run for**: 5 s, 10 s, 30 s, 1 min, or until stopped.
+4. Tick the safety box and press **Start autonomous run**. It arms by itself if the box is ticked.
+
+It starts gently, like the keys. The pad, the keys or a controller held still take over while they are held.
+
+**With a controller connected to the car, a run needs R1 held.** While the car's controller is connected, its teleop node sends zero speed with every controller message, and the car's command mux puts the controller ahead of `/drive`, so the car only takes a run's commands while R1 (the autonomous deadman) is held. The panel shows this: **Hold R1 to run** is switched on and cannot be turned off while the controller is connected, and says why. Unplug or turn off the controller and the switch is yours again. A run started with nothing held ends, with that reason, if a controller connects during it.
+
+### Hold R1 to run
+
+Turn on **Hold R1 to run** and R1 on the controller becomes the run's deadman, the way L1 is for driving by hand:
+
+- **Hold R1 for half a second** and the car drives at the panel's speed and steering. A quick tap does nothing.
+- **Let go** and the car stops at once. The page stays armed, so holding R1 again runs again.
+- It works with the car's PS4 controller (read through `/joy`, which runs at full rate while this is on) and with a Steam Deck's R1.
+- The safety box must be ticked. A hold arms the controls by itself if they are not armed.
+- R1 uses the Controller tab's mapping. An R1 that has flickered on and off by itself in the last 2 s cannot start a run, and the panel says so.
+- If `/joy` goes quiet while R1 is held, the car stops, as if R1 were let go.
+- The switch is off again after a reload (and on, locked, whenever a controller is connected to the car). It works only in the Autonomous run mode, and only on the Drive tab.
+
+Run for does not apply here: the hold is the limit.
+
+### Obstacle stop
+
+![The stop zone on the LiDAR: red, because a wall 1.5 m ahead is inside the 1.9 m needed at 3 m/s](images/drive-tab/25-obstacle-stop-zone.jpg)
+
+The car watches its LiDAR straight ahead whenever something drives it forward through `/drive`: an autonomous run from this page, a `ros2 topic pub`, or your own node. If anything in the strip in front of the car (0.4 m wide) is closer than the car needs to stop, **the car turns the emergency stop on by itself**.
+
+- **How far it needs:** the **Keep clear** margin (0.3 m by default), plus 0.15 s of travel before the stop takes hold, plus braking at 4 m/s². That's 0.58 m at 1 m/s, 1.1 m at 2 m/s and 1.9 m at 3 m/s.
+- **The stop zone** is drawn on the LiDAR views in the Autonomous run mode, at the run's speed: orange, or **red when something is already in it**.
+- **When it trips**, the banner reads **Obstacle stop** and says what it saw, for example *something 0.62 m ahead at 2.00 m/s*. The run ends, and a `ros2 topic pub` on the car is stopped too. Clear the way, let go of L1 and R1, and press **Allow driving again**.
+- **No LiDAR, no driving:** if the scan stops coming for half a second while the car is driving forward, that trips it too, because the car can no longer see ahead.
+- **It does not watch** driving by hand: the controller (L1) and the page's **Hold to drive** are yours to steer. It doesn't watch reverse either, because the LiDAR can't see behind the car.
+- The **Obstacle stop** switch and **Keep clear** are settings on the car, shared by every dashboard. They are back to on and 0.3 m when the car's stack restarts. With an older `system_diagnostics.py` on the car, the switch is greyed out. Every kill switch below still works while R1 is held, and after one, R1 must be let go before a new hold can start it.
+
+**Stopping it, the kill switch:** **STOP**, **Space**, **Esc**, **Stop autonomous run**, the **■ Stop** on the indicator, or **Emergency stop**. It also ends by itself when the time is up, and on everything else that disarms: leaving the tab or full screen, the window losing focus, the connection dropping. That is the point of running it from the page instead of from a terminal on the car: if the page or its Wi-Fi goes, the car's drive watchdog stops the car within 0.3 s, where a `ros2 topic pub` left running on the car would keep it driving.
+
+While it runs, the top bar shows **AUTONOMOUS RUN ■ Stop**, *who is driving* says **Autonomous run**, and the status banner's **Autonomous** reads **Driving**.
+
+### Stopping autonomous code on the car
+
+When something else drives the car through `/drive` (a `ros2 topic pub` in a terminal, or your own node), the **Autonomous** indicator says **Driving** or **Standby**, with a **Stop** beside it (and on the driving view's chip). Stop asks the car to kill the `ros2 topic pub` (its process number is in its ROS node name, `_ros2cli_<pid>`) and then sends zero speed, so the car stops at once. Your own node it names but does not kill: it cannot know what else that process does, so stop it where it runs, or use **Emergency stop**, which stops everything.
+
 ## Speed and steering limits
 
 The Limits section of the Controls card is always in view.
@@ -321,7 +380,7 @@ flowchart LR
   pad["Physical controller<br/>deadman L1 / R1"] --> mux
   mux --> a2v["ackermann_to_vesc"] --> vesc["VESC motor<br/>controller"] --> motor(("Motor and<br/>steering"))
   wd["Robot watchdog<br/>system_diagnostics.py"] -. "zero speed if /drive<br/>goes quiet 0.3 s" .-> mux
-  es["Emergency stop"] -. "freezes it, holds<br/>the motor at 0" .-> a2v
+  es["Emergency stop"] -. "locks the mux,<br/>holds the motor at 0" .-> mux
 ```
 
 The page publishes `ackermann_msgs/AckermannDriveStamped` on `/drive`, the mux's navigation input, over the same rosbridge connection the rest of the dashboard uses. The details, every safety rule and where to change each setting are in the README's [Driving from the page](../../README.md#driving-from-the-page).

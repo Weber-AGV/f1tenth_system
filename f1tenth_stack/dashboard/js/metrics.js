@@ -2101,6 +2101,9 @@ function drawClassicScan(canvas, scaleState, selLo, selHi) {
 
   drawDangerZones(ctx, originX, originY, pxPerMeter);
 
+  /* the robot's obstacle stop zone (radar.js) */
+  if (typeof drawObstacleZone === "function") drawObstacleZone(ctx, P, k, Math.round(11 * k));
+
   /* SELECTED WEDGE — behind the returns */
 
   const hasSelection =

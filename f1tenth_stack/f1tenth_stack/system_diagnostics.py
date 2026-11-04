@@ -27,6 +27,7 @@ import collections
 import getpass
 import glob
 import grp
+import math
 import os
 import re
 import shutil
@@ -43,8 +44,10 @@ try:
     from rclpy.executors import MultiThreadedExecutor
     from rclpy.node import Node
     from ackermann_msgs.msg import AckermannDriveStamped
-    from sensor_msgs.msg import Joy
-    from std_msgs.msg import Float64
+    from rcl_interfaces.msg import SetParametersResult
+    from rclpy.qos import qos_profile_sensor_data
+    from sensor_msgs.msg import Joy, LaserScan
+    from std_msgs.msg import Bool, Float64
     from std_srvs.srv import Trigger
 except ImportError:
     # --self-test exercises the pure decision logic, which is the part worth
@@ -173,12 +176,19 @@ def cpu_busy_pct(prev, cur):
 # ---------- emergency stop ----------
 #
 # The command mux gives the physical controller priority, so nothing a web
-# page publishes can stop a car someone is driving with the pad. Every input
-# - pad, web, autonomous - reaches the motor through ONE node, which turns
-# the mux output into /commands/motor/* for the VESC. Freezing that node
-# (SIGSTOP) cuts all of them at once; this node then holds the motor at 0
-# ERPM itself, at 50 Hz, so the VESC actively brakes to a stop and keeps
-# getting a command (no firmware timeout). SIGCONT releases it.
+# page publishes can stop a car someone is driving with the pad. The stop is
+# the mux's own lock instead: mux.yaml lists ESTOP_LOCK_TOPIC under `locks:`
+# at priority 255, and while it carries true the mux forwards no input at
+# all - pad, web or autonomous. This node then holds the motor at 0 ERPM
+# itself, at 50 Hz, so the VESC actively brakes to a stop and keeps getting a
+# command (no firmware timeout). Publishing false releases it.
+#
+# A car whose mux.yaml has no such lock (nothing subscribes to the topic)
+# gets the old way: freeze ackermann_to_vesc_node, the one node every input
+# passes through, with SIGSTOP, and SIGCONT to release. Measured on F1-WSU-2
+# (2026-11-04): after a long freeze that node sometimes comes back deaf -
+# listed as _NODE_NAME_UNKNOWN_, publishing nothing - and the car cannot
+# drive until bringup restarts. Hence the lock.
 #
 # Speed 0, not a brake current: the joystick's own release path already
 # sends speed 0, and a brake value has units (A vs mA) that differ between
@@ -186,6 +196,7 @@ def cpu_busy_pct(prev, cur):
 
 DRIVE_CHAIN_NODE = "ackermann_to_vesc_node"
 ESTOP_HZ = 50.0
+ESTOP_LOCK_TOPIC = "/emergency_stop"   # std_msgs/Bool, a `locks:` entry in mux.yaml
 
 
 def parse_pgrep(out, own_pid):
@@ -357,6 +368,157 @@ def joy_verdict(rc, out, devices, connected, in_group):
     ] + raw)
 
 
+# ---------- stopping autonomous code ----------
+#
+# `ros2 topic pub /drive ... -r 10` keeps the car driving until it is killed.
+# Its node is named _ros2cli_<pid> (the pid of the ros2 command itself), so it
+# can be found from the /drive publishers and stopped. Anything else
+# publishing /drive (someone's own node) is only named, not killed: this node
+# cannot know what else that process does. Emergency stop stops either.
+
+CLI_NODE = re.compile(r"^/?_ros2cli_(\d+)$")
+AUTO_STOP_ZEROS = 10        # zero-speed commands after stopping, one per watchdog tick
+
+
+def cli_pids(publisher_nodes):
+    """Return the pids of `ros2 topic pub` processes, from their _ros2cli_<pid> node names."""
+    return sorted({int(m.group(1)) for n in publisher_nodes or [] if (m := CLI_NODE.match(n))})
+
+
+def other_drive_nodes(publisher_nodes):
+    """
+    Return the /drive publishers that are someone's own autonomous code.
+
+    That is, neither a dashboard (rosbridge), this node, nor a ros2 topic pub.
+    """
+    return sorted({("/" + n.lstrip("/")) for n in publisher_nodes or []
+                   if not CLI_NODE.match(n)
+                   and not re.search(r"rosbridge|system_diagnostics", n)})
+
+
+# ---------- obstacle stop ----------
+#
+# While something drives the car FORWARD through /drive - the page's
+# autonomous run, a `ros2 topic pub`, your own node - watch the LiDAR straight
+# ahead. Something inside the distance the car needs to stop turns the
+# emergency stop on: the one stop that wins over every input, whoever is
+# publishing. It is released on the page as usual, once the way is clear.
+#
+# Not for driving by hand: the controller goes through /teleop, not /drive,
+# and while L1 is held the mux follows the controller anyway; the page's
+# hold-to-drive marks its commands DASHBOARD_MANUAL_FRAME. Forward only: the
+# LiDAR cannot see behind the car.
+#
+# The distance needed: a margin, plus how far the car travels before the stop
+# takes hold, plus braking. Measured coast-down is about 5.6 m/s^2
+# (docs/research/ros-status-spike-notes.md); speed 0 brakes harder than a
+# coast, and 4 leaves room for a slippery floor.
+
+OBSTACLE_MARGIN_M = 0.3             # default; the page can change it (a ROS parameter)
+OBSTACLE_MARGINS = (0.1, 2.0)       # what a margin may be set to
+OBSTACLE_REACTION_S = 0.15          # a scan (40 Hz), this check, the drive chain
+OBSTACLE_DECEL = 4.0                # m/s^2
+OBSTACLE_HALF_WIDTH_M = 0.2         # the corridor ahead: the car is about 0.3 m wide
+OBSTACLE_MIN_POINTS = 3             # one or two stray returns are not an obstacle
+OBSTACLE_SCAN_FRESH_S = 0.5         # no newer scan than this: it cannot see, so stop
+OBSTACLE_MIN_SPEED = 0.05           # m/s; slower is standing still
+OBSTACLE_AT_LIDAR_M = 0.05          # closer than this is beside the LiDAR, not ahead
+OBSTACLE_REPORT_M = 10.0            # how far ahead "nearest ahead" looks for the page
+DASHBOARD_MANUAL_FRAME = "dashboard_manual"   # the page's hold-to-drive (drive.js)
+
+
+def stop_distance(speed, margin):
+    """Metres ahead the car needs clear to stop from this forward speed."""
+    v = max(0.0, speed)
+    return margin + v * OBSTACLE_REACTION_S + v * v / (2 * OBSTACLE_DECEL)
+
+
+def nearest_ahead(ranges, angle_min, angle_inc, range_min, range_max,
+                  half_width=OBSTACLE_HALF_WIDTH_M, reach=OBSTACLE_REPORT_M):
+    """
+    Return how far ahead the closest thing in the car's corridor is.
+
+    Along the car, from the LiDAR; None if clear within reach. The
+    OBSTACLE_MIN_POINTS-th closest return, so a stray one does not count.
+    """
+    xs = []
+    for i, r in enumerate(ranges or []):
+        if not (r == r) or r < range_min or r > range_max:      # nan, inf, invalid
+            continue
+        a = angle_min + i * angle_inc
+        x = r * math.cos(a)
+        if 0.0 < x <= reach and abs(r * math.sin(a)) <= half_width:
+            xs.append(x)
+    if len(xs) < OBSTACLE_MIN_POINTS:
+        return None
+    xs.sort()
+    return xs[OBSTACLE_MIN_POINTS - 1]
+
+
+def obstacle_verdict(enabled, speed, cmd_age, frame, l1_held, estop_on, scan_age,
+                     ahead, margin):
+    """Why the car must stop now, or "" - for one forward /drive command."""
+    if not enabled or estop_on or l1_held:
+        return ""
+    if frame == DASHBOARD_MANUAL_FRAME or frame == DRIVE_WATCHDOG_FRAME:
+        return ""
+    if cmd_age > DRIVE_QUIET_S or speed < OBSTACLE_MIN_SPEED:
+        return ""
+    if scan_age is None or scan_age > OBSTACLE_SCAN_FRESH_S:
+        return (f"obstacle stop: no LiDAR scan for "
+                f"{'ever' if scan_age is None else f'{scan_age:.1f} s'} "
+                f"while driving forward at {speed:.2f} m/s, so it cannot see ahead")
+    need = stop_distance(speed, margin)
+    if ahead is not None and ahead <= need:
+        # "ahead" is measured forward from the LiDAR, so a hand right beside
+        # it reads 0.00 m: say where it is rather than a distance that looks
+        # like a fault
+        where = (f"{ahead:.2f} m ahead" if ahead >= OBSTACLE_AT_LIDAR_M
+                 else "right at the LiDAR")
+        return (f"obstacle stop: something {where} at {speed:.2f} m/s "
+                f"(needs {need:.2f} m to stop)")
+    return ""
+
+
+def stop_cli(pids):
+    """
+    Stop each `ros2 topic pub`: SIGINT, as Ctrl+C would, then SIGKILL.
+
+    SIGKILL is for what is still there after 1.5 s. Returns (stopped pids,
+    "pid (why)" for the ones that failed).
+    """
+    stopped, failed = [], []
+    for pid in pids:
+        try:
+            os.kill(pid, signal.SIGINT)
+            stopped.append(pid)
+        except OSError as e:
+            failed.append(f"{pid} ({e.strerror})")
+    if stopped:
+        deadline = time.time() + 1.5
+        while time.time() < deadline and any(_alive(p) for p in stopped):
+            time.sleep(0.1)
+        for pid in stopped:
+            if _alive(pid):
+                try:
+                    os.kill(pid, signal.SIGKILL)
+                except OSError:
+                    pass
+    return stopped, failed
+
+
+def restart_refusal(estop_on, deadman, page_driving):
+    """Why a restart must wait, or "" when it may go ahead."""
+    if estop_on:
+        return ("the emergency stop is on - a restart would bring the drive chain "
+                "back up running. Release it first")
+    if deadman:
+        return "someone is holding L1/R1 on the controller - let go first"
+    if page_driving:
+        return "a dashboard is driving the car - stop first"
+    return ""
+
+
 def status(name, level, message, values, hardware_id=""):
     s = DiagnosticStatus()
     s.name = name
@@ -365,6 +527,14 @@ def status(name, level, message, values, hardware_id=""):
     s.hardware_id = hardware_id
     s.values = [KeyValue(key=str(k), value=str(v)) for k, v in values]
     return s
+
+
+def _alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except OSError:
+        return False
 
 
 def worst(*levels):
@@ -407,9 +577,11 @@ class SystemDiagnostics(Node):
         self.estop_active = False
         self.estop_since = None
         self.estop_pids = []
+        self.estop_locked = False
         self.estop_note = ""
         estop_group = MutuallyExclusiveCallbackGroup()
         self.motor_pub = self.create_publisher(Float64, "/commands/motor/speed", 10)
+        self.lock_pub = self.create_publisher(Bool, ESTOP_LOCK_TOPIC, 10)
         self.create_service(Trigger, "~/emergency_stop", self.emergency_stop,
                             callback_group=estop_group)
         self.create_service(Trigger, "~/emergency_release", self.emergency_release,
@@ -435,10 +607,34 @@ class SystemDiagnostics(Node):
                                  callback_group=estop_group)
         self.create_timer(1.0 / 20, self.drive_watchdog, callback_group=estop_group)
 
+        # Restart everything bringup runs (the dashboard's Restart button,
+        # restart_stack.py). Own group: it answers at once and the restart runs apart.
+        self.create_service(Trigger, "~/restart_stack", self.restart_stack,
+                            callback_group=MutuallyExclusiveCallbackGroup())
+
+        # Obstacle stop: the LiDAR ahead while /drive drives forward. In the
+        # e-stop's group, so a trip and the hold never interleave.
+        self.declare_parameter("obstacle_stop", True)
+        self.declare_parameter("obstacle_margin", OBSTACLE_MARGIN_M)
+        self.add_on_set_parameters_callback(self.on_set_parameters)
+        self.drive_frame = ""
+        self.scan_at = None             # monotonic time of the newest scan
+        self.ahead = None               # nearest_ahead() of it
+        self.obstacle_tripped = None    # (wall time, why) of the last trip
+        self.create_subscription(LaserScan, "/scan", self.on_scan, qos_profile_sensor_data,
+                                 callback_group=estop_group)
+
+        # Stop autonomous code driving through /drive (the Autonomous Stop button).
+        # Its own group: it waits up to 1.5 s for the process to exit, which
+        # must never hold up the e-stop's hold or the watchdog's zeros.
+        self.create_service(Trigger, "~/stop_autonomous", self.stop_autonomous,
+                            callback_group=MutuallyExclusiveCallbackGroup())
+
         self.get_logger().info(
             f"publishing system diagnostics on /diagnostics ({self.ncores} cores); "
             "services ~/joystick_check, ~/emergency_stop, ~/emergency_release, "
-            "~/controller_disconnect ready")
+            "~/controller_disconnect, ~/restart_stack, ~/stop_autonomous ready; "
+            f"obstacle stop {'on' if self.obstacle_enabled() else 'off'}")
 
     # ---------- on-demand checks, called from the dashboard ----------
 
@@ -504,10 +700,111 @@ class SystemDiagnostics(Node):
         self.get_logger().warn(f"controller_disconnect: {response.message}")
         return response
 
+    # ---------- who publishes /drive ----------
+
+    def drive_publishers(self):
+        """
+        Return the node names publishing /drive, this node left out.
+
+        From the ROS graph directly, so hidden nodes (a `ros2 topic pub` is
+        one) count.
+        """
+        try:
+            infos = self.get_publishers_info_by_topic("/drive")
+        except Exception:  # noqa: BLE001
+            return []
+        names = []
+        for info in infos:
+            ns = (info.node_namespace or "/").rstrip("/")
+            name = f"{ns}/{info.node_name}"
+            if "system_diagnostics" not in name:
+                names.append(name)
+        return sorted(set(names))
+
+    def stop_autonomous(self, _request, response):
+        """
+        Stop what drives the car through /drive that is not a dashboard.
+
+        Kill each `ros2 topic pub` (its pid is in its node name), then send
+        zero speed so the car stops at once. Other nodes are named, not killed.
+        """
+        pubs = self.drive_publishers()
+        others = other_drive_nodes(pubs)
+        stopped, failed = stop_cli(cli_pids(pubs))
+        # the mux holds the last command it was given: give it zero now
+        self.drive_moving = False
+        self.drive_zeros_left = AUTO_STOP_ZEROS
+        parts = []
+        if stopped:
+            parts.append(f"stopped ros2 topic pub (pid {', '.join(map(str, stopped))}) "
+                         "and sent zero speed")
+        if failed:
+            parts.append(f"could not stop pid {', '.join(failed)}")
+        if others:
+            parts.append(f"{', '.join(others)} is still publishing /drive - "
+                         "stop it where it runs, or use Emergency stop")
+        if not pubs:
+            parts.append("nothing autonomous was publishing /drive; sent zero speed anyway")
+        response.success = bool(stopped) or not pubs
+        response.message = "; ".join(parts) or "sent zero speed"
+        self.get_logger().warn(f"stop_autonomous: {response.message}")
+        return response
+
+    # ---------- restarting the stack ----------
+
+    def restart_stack(self, _request, response):
+        """
+        Restart everything bringup runs (restart_stack.py).
+
+        Refused while the car could be moving, or while the emergency stop is
+        on: the restart would bring the stopped drive chain back up running.
+        """
+        why = restart_refusal(self.estop_active,
+                              deadman_held(self.joy_buttons, time.time() - self.joy_at),
+                              self.drive_moving and time.monotonic() - self.drive_at < 1.0)
+        if why:
+            response.success, response.message = False, why
+            return response
+        try:
+            import restart_stack                            # next to this file (~/diag)
+        except ImportError:
+            try:
+                from f1tenth_stack import restart_stack     # installed with bringup
+            except ImportError:
+                response.success = False
+                response.message = "restart_stack.py is missing next to system_diagnostics.py"
+                return response
+        response.success, response.message = restart_stack.restart(
+            os.path.dirname(os.path.abspath(__file__)))
+        self.get_logger().warn(f"restart_stack: {response.message}")
+        return response
+
     # ---------- emergency stop ----------
 
     def emergency_stop(self, _request, response):
         """Stop the car whoever is driving it, and keep it stopped."""
+        response.success = self.engage_estop()
+        response.message = self.estop_note
+        return response
+
+    def engage_estop(self, why=""):
+        """
+        Lock the mux (or, without the lock, freeze the drive chain).
+
+        Then hold the motor at 0. why: what tripped it, when it was not
+        someone pressing the button. True if every input is cut off.
+        """
+        if self.lock_pub.get_subscription_count() > 0:
+            self.estop_locked = True
+            self.estop_active = True
+            self.estop_since = self.estop_since or time.time()
+            self.estop_note = f"locked the mux ({ESTOP_LOCK_TOPIC})"
+            if why:
+                self.estop_note = f"{why} - {self.estop_note}"
+            self.estop_hold()
+            self.get_logger().warn(f"EMERGENCY STOP: {self.estop_note}")
+            return True
+
         rc, out = probe(["pgrep", "-f", DRIVE_CHAIN_NODE], timeout=3)
         pids = parse_pgrep(out if rc == 0 else "", os.getpid())
         frozen, failed = [], []
@@ -529,11 +826,11 @@ class SystemDiagnostics(Node):
             self.estop_note = (f"could not find or freeze {DRIVE_CHAIN_NODE}"
                                + (f": {', '.join(failed)}" if failed else "")
                                + " - holding speed 0 only, the controller may still fight it")
+        if why:
+            self.estop_note = f"{why} - {self.estop_note}"
         self.estop_hold()
         self.get_logger().warn(f"EMERGENCY STOP: {self.estop_note}")
-        response.success = bool(frozen)
-        response.message = self.estop_note
-        return response
+        return bool(frozen)
 
     def emergency_release(self, _request, response):
         """
@@ -549,7 +846,10 @@ class SystemDiagnostics(Node):
         if deadman_held(self.joy_buttons, time.time() - self.joy_at):
             response.success = False
             response.message = "someone is holding L1/R1 - let go first"
+            self.get_logger().warn(f"emergency stop release refused: {response.message}")
             return response
+        if self.estop_locked:
+            self.lock_pub.publish(Bool(data=False))
         resumed, gone = [], []
         for pid in self.estop_pids:
             try:
@@ -561,7 +861,13 @@ class SystemDiagnostics(Node):
         self.estop_since = None
         self.estop_pids = []
         self.estop_note = ""
-        msg = f"released; resumed pid {', '.join(map(str, resumed)) or 'none'}"
+        if self.estop_locked:
+            msg = "released; mux unlocked"
+            if resumed:
+                msg += f", resumed pid {', '.join(map(str, resumed))}"
+        else:
+            msg = f"released; resumed pid {', '.join(map(str, resumed)) or 'none'}"
+        self.estop_locked = False
         if gone:
             msg += f" (gone: {', '.join(map(str, gone))} - restart bringup)"
         self.get_logger().warn(f"emergency stop {msg}")
@@ -573,6 +879,9 @@ class SystemDiagnostics(Node):
             m = Float64()
             m.data = 0.0
             self.motor_pub.publish(m)
+            if self.estop_locked:
+                # every tick, so a mux that restarts mid-stop is locked again
+                self.lock_pub.publish(Bool(data=True))
 
     # ---------- drive watchdog ----------
 
@@ -581,10 +890,110 @@ class SystemDiagnostics(Node):
             return                      # our own zeros coming back
         self.drive_at = time.monotonic()
         self.drive_speed = msg.drive.speed
+        self.drive_frame = msg.header.frame_id
         self.drive_moving = abs(msg.drive.speed) > 1e-3
         self.drive_zeros_left = 0
+        self.obstacle_check()
+
+    # ---------- obstacle stop ----------
+
+    def obstacle_enabled(self):
+        return bool(self.get_parameter("obstacle_stop").value)
+
+    def obstacle_margin(self):
+        return float(self.get_parameter("obstacle_margin").value)
+
+    def on_set_parameters(self, params):
+        """
+        Accept obstacle_stop / obstacle_margin from the page.
+
+        Set through the node's own set_parameters service; a margin out of
+        range is refused, not clamped.
+        """
+        for p in params:
+            if p.name == "obstacle_margin":
+                lo, hi = OBSTACLE_MARGINS
+                try:
+                    ok = lo <= float(p.value) <= hi
+                except (TypeError, ValueError):
+                    ok = False
+                if not ok:
+                    return SetParametersResult(
+                        successful=False, reason=f"obstacle_margin must be {lo} to {hi} m")
+            if p.name == "obstacle_stop" and not isinstance(p.value, bool):
+                return SetParametersResult(successful=False,
+                                           reason="obstacle_stop is true or false")
+        for p in params:
+            if p.name in ("obstacle_stop", "obstacle_margin"):
+                self.get_logger().warn(f"obstacle stop: {p.name} set to {p.value}")
+        return SetParametersResult(successful=True)
+
+    def on_scan(self, msg):
+        self.scan_at = time.monotonic()
+        self.ahead = nearest_ahead(msg.ranges, msg.angle_min, msg.angle_increment,
+                                   msg.range_min, msg.range_max)
+        self.obstacle_check()
+
+    def obstacle_check(self):
+        """
+        Trip the emergency stop if the car cannot stop in the space ahead.
+
+        For a forward /drive command; checked from every scan, every /drive
+        message, and the watchdog (a scan that stopped coming).
+        """
+        now = time.monotonic()
+        why = obstacle_verdict(
+            self.obstacle_enabled(), self.drive_speed, now - self.drive_at, self.drive_frame,
+            self.joy_l1_held(), self.estop_active,
+            None if self.scan_at is None else now - self.scan_at, self.ahead,
+            self.obstacle_margin())
+        if not why:
+            return
+        self.obstacle_tripped = (time.time(), why)
+        self.engage_estop(why)
+        # when the stop is released, the mux's last command should be a zero
+        self.drive_moving = False
+        self.drive_zeros_left = AUTO_STOP_ZEROS
+        # a `ros2 topic pub` would drive on into it after the release: stop it,
+        # apart from this group so the hold is never held up
+        pids = cli_pids(self.drive_publishers())
+        if pids:
+            threading.Thread(target=stop_cli, args=(pids,), daemon=True).start()
+        # every dashboard should know now, not at the next 1 Hz tick
+        msg = DiagnosticArray()
+        msg.header.stamp = self.get_clock().now().to_msg()
+        msg.status = [self.estop_status(), self.obstacle_status()]
+        self.pub.publish(msg)
+
+    def joy_l1_held(self):
+        """L1 alone: the mux then follows the controller, not /drive."""
+        b = self.joy_buttons
+        return (b is not None and time.time() - self.joy_at <= JOY_FRESH_S
+                and len(b) > JOY_DEADMEN[0] and b[JOY_DEADMEN[0]] == 1)
+
+    def obstacle_status(self):
+        on = self.obstacle_enabled()
+        margin = self.obstacle_margin()
+        now = time.monotonic()
+        scan_age = None if self.scan_at is None else now - self.scan_at
+        vals = [("enabled", "yes" if on else "no"), ("margin m", f"{margin:.2f}"),
+                ("reaction s", f"{OBSTACLE_REACTION_S}"), ("decel m/s2", f"{OBSTACLE_DECEL}"),
+                ("corridor m", f"{2 * OBSTACLE_HALF_WIDTH_M:.2f}"),
+                ("ahead m", "none" if self.ahead is None or scan_age is None or scan_age > 2
+                 else f"{self.ahead:.2f}"),
+                ("scan age s", "none" if scan_age is None else f"{scan_age:.2f}")]
+        if self.obstacle_tripped and time.time() - self.obstacle_tripped[0] < 60:
+            at = time.strftime("%H:%M:%S", time.localtime(self.obstacle_tripped[0]))
+            return status("system: Obstacle stop", WARN,
+                          f"stopped the car at {at}: {self.obstacle_tripped[1]}",
+                          vals + [("tripped", at)])
+        if not on:
+            return status("system: Obstacle stop", OK, "off: /drive is not watched", vals)
+        return status("system: Obstacle stop", OK,
+                      "watching ahead while /drive drives forward", vals)
 
     def drive_watchdog(self):
+        self.obstacle_check()           # a LiDAR that stopped sending
         if self.drive_zeros_left:
             self.drive_zeros_left -= 1
         elif drive_went_quiet(self.drive_moving, self.drive_at, time.monotonic()):
@@ -602,7 +1011,8 @@ class SystemDiagnostics(Node):
         self.drive_pub.publish(zero)
 
     def drive_status(self):
-        vals = [("stops after", f"{DRIVE_QUIET_S:.1f} s of silence while moving")]
+        vals = [("stops after", f"{DRIVE_QUIET_S:.1f} s of silence while moving"),
+                ("publishers", ", ".join(self.drive_publishers()) or "none")]
         if self.drive_stopped and time.time() - self.drive_stopped[0] < 60:
             at = time.strftime("%H:%M:%S", time.localtime(self.drive_stopped[0]))
             return status("system: Drive watchdog", WARN,
@@ -616,6 +1026,7 @@ class SystemDiagnostics(Node):
         since = time.strftime("%H:%M:%S", time.localtime(self.estop_since))
         return status("system: E-stop", ERROR, f"EMERGENCY STOP ACTIVE since {since}",
                       [("active", "yes"), ("since", since), ("action", self.estop_note),
+                       ("method", "mux lock" if self.estop_locked else "SIGSTOP"),
                        ("frozen pids", ", ".join(map(str, self.estop_pids)) or "none")])
 
     # ---------- fast probes: pure sysfs reads, safe at 1 Hz ----------
@@ -1015,7 +1426,8 @@ class SystemDiagnostics(Node):
     def tick(self):
         msg = DiagnosticArray()
         msg.header.stamp = self.get_clock().now().to_msg()
-        for build in (self.estop_status, self.drive_status, self.thermal, self.cpu, self.gpu,
+        for build in (self.estop_status, self.drive_status, self.obstacle_status,
+                      self.thermal, self.cpu, self.gpu,
                       self.memory, self.storage, self.power, self.vesc_device,
                       self.network, self.gamepad, self.camera, self.clock):
             try:
@@ -1120,6 +1532,67 @@ def self_test():
     assert not deadman_held([0] * 13, 0.1) and not deadman_held(None, 0.0)
     assert not deadman_held([0, 0], 0.1), "short button arrays must not crash"
     print("controller disconnect self-test passed")
+
+    pubs = ["/_ros2cli_4120", "/rosbridge_websocket", "/pure_pursuit", "_ros2cli_77",
+            "/system_diagnostics"]
+    assert cli_pids(pubs) == [77, 4120], cli_pids(pubs)
+    assert other_drive_nodes(pubs) == ["/pure_pursuit"], other_drive_nodes(pubs)
+    assert cli_pids([]) == [] and cli_pids(None) == [] and other_drive_nodes(None) == []
+    assert cli_pids(["/_ros2cli_daemon_0"]) == [], "only the numbered command nodes"
+    print("stop autonomous self-test passed")
+
+    assert restart_refusal(False, False, False) == ""
+    assert "emergency stop" in restart_refusal(True, False, False)
+    assert "L1/R1" in restart_refusal(False, True, False)
+    assert "driving" in restart_refusal(False, False, True)
+    print("restart refusal self-test passed")
+
+    # obstacle stop: the distance needed, the corridor, and when to trip
+    assert abs(stop_distance(0, 0.3) - 0.3) < 1e-9
+    assert abs(stop_distance(3.0, 0.3) - (0.3 + 0.45 + 9 / 8)) < 1e-9
+    assert stop_distance(-2, 0.3) == 0.3, "reverse: the LiDAR cannot see behind"
+    inc = math.radians(0.25)
+    amin = -math.radians(135)
+    n = int(round(math.radians(270) / inc)) + 1
+    ahead_i = int(round(-amin / inc))
+
+    def scan_with(hits, far=float("inf")):
+        r = [far] * n
+        for i, d in hits:
+            r[i] = d
+        return r
+    wall = scan_with([(ahead_i + k, 1.0) for k in range(-5, 6)])
+    assert abs(nearest_ahead(wall, amin, inc, 0.02, 30.0) - 1.0) < 0.01
+    assert nearest_ahead(scan_with([(ahead_i, 0.5), (ahead_i + 1, 0.5)]),
+                         amin, inc, 0.02, 30.0) is None, \
+        "two stray returns are not an obstacle"
+    side = int(round((math.radians(60) - amin) / inc))
+    assert nearest_ahead(scan_with([(side + k, 0.6) for k in range(10)]),
+                         amin, inc, 0.02, 30.0) is None, \
+        "a wall beside the car is not ahead of it"
+    assert nearest_ahead(scan_with([(ahead_i + k, 0.0) for k in range(10)]),
+                         amin, inc, 0.02, 30.0) is None, \
+        "zero ranges are no return, not a hit"
+    assert nearest_ahead([float("nan")] * n, amin, inc, 0.02, 30.0) is None
+    go = dict(enabled=True, speed=2.0, cmd_age=0.05, frame="dashboard_auto", l1_held=False,
+              estop_on=False, scan_age=0.03, margin=0.3)
+    assert "1.00 m ahead" in obstacle_verdict(**go, ahead=1.0), obstacle_verdict(**go, ahead=1.0)
+    assert obstacle_verdict(**go, ahead=2.0) == "", "2 m is enough at 2 m/s (1.1 m needed)"
+    assert obstacle_verdict(**go, ahead=None) == ""
+    assert obstacle_verdict(**{**go, "frame": DASHBOARD_MANUAL_FRAME}, ahead=0.4) == "", \
+        "driving by hand from the page is not watched"
+    assert obstacle_verdict(**{**go, "frame": "base_link"}, ahead=0.4), "a ros2 topic pub is"
+    assert obstacle_verdict(**{**go, "l1_held": True}, ahead=0.4) == "", "the controller has it"
+    assert obstacle_verdict(**{**go, "speed": -1.0}, ahead=0.4) == "", "reverse is not watched"
+    assert obstacle_verdict(**{**go, "cmd_age": 1.0}, ahead=0.4) == "", \
+        "an old command is not driving"
+    assert obstacle_verdict(**{**go, "enabled": False}, ahead=0.4) == ""
+    assert obstacle_verdict(**{**go, "estop_on": True}, ahead=0.4) == "", "already stopped"
+    assert "no LiDAR" in obstacle_verdict(**{**go, "scan_age": 0.8}, ahead=None)
+    assert "no LiDAR" in obstacle_verdict(**{**go, "scan_age": None}, ahead=None)
+    assert "right at the LiDAR" in obstacle_verdict(**go, ahead=0.0), "a hand beside it"
+    assert "0.30 m ahead" in obstacle_verdict(**go, ahead=0.3)
+    print("obstacle stop self-test passed")
 
 
 def main():

@@ -22,6 +22,7 @@
 <link rel="stylesheet" href="css/overview.css">  <!-- Overview tab, the LiDAR card and its radar panel -->
 <link rel="stylesheet" href="css/drive.css">     <!-- the Drive tab's own cards and the unlock dialogs -->
 <link rel="stylesheet" href="css/advanced.css">  <!-- Advanced tab -->
+<link rel="stylesheet" href="css/controller.css"> <!-- Controller tab: the PS4 controller, live -->
 <link rel="stylesheet" href="css/cockpit.css">   <!-- the driving view: Drive tab and full screen -->
 </head>
 
@@ -90,6 +91,26 @@
 
 <div class="conn-hint" id="connHint" hidden></div>
 
+<!-- a short message about what just happened (stopping autonomous code) -->
+<div class="toast" id="toast" role="status" hidden></div>
+
+<!-- restarting the dashboard on the car (checks.js): waits for the car to
+     come back, then reloads this page -->
+<div class="restart-overlay" id="restartOverlay" hidden role="alertdialog"
+     aria-labelledby="restartTitle" aria-describedby="restartText">
+  <div class="restart-box">
+    <div class="restart-spin" id="restartSpin" aria-hidden="true"></div>
+    <h2 id="restartTitle">Restarting the dashboard on the car</h2>
+    <p id="restartText"></p>
+    <ol class="restart-steps" id="restartSteps"></ol>
+    <div class="restart-time" id="restartTime">0:00</div>
+    <div class="restart-actions">
+      <button class="check-btn" id="restartWait" type="button" hidden>Keep waiting</button>
+      <button class="check-btn" id="restartClose" type="button" hidden>Close</button>
+    </div>
+  </div>
+</div>
+
 <!-- shown on every tab while the emergency stop is on (or failed) -->
 <div class="estop-bar" id="estopBar" hidden role="alert">
   <div class="estop-msg">
@@ -115,6 +136,7 @@
 
   <div id="staleBar">
     NO DATA FROM THE ROBOT — this page may be showing stale information
+    <button class="stale-restart" type="button" data-restart>Restart the dashboard on the car</button>
   </div>
 
   <div id="limitBar"></div>
@@ -145,6 +167,14 @@
         <span class="v" id="factNodes">—</span>
       </div>
 
+      <!-- is autonomous code driving the car? (drive.js autonomousState) -->
+      <div class="fact-auto" id="factAutoBox" data-state="unknown">
+        <span class="k">Autonomous</span>
+        <span class="v"><span class="auto-dot"></span><span id="factAuto">—</span>
+          <button class="auto-stop" id="factAutoStop" type="button" data-auto-stop hidden
+                  title="Stop it: ends this page's autonomous run, or stops the car's ros2 topic pub and sends zero speed">Stop</button></span>
+      </div>
+
       <!-- how many people have the dashboard open -->
       <div id="clientsFooter"
            title="People with the dashboard open right now (rosbridge connections, including you). rosbridge serves 10 at once; the 11th onward gets no data. Updates when someone connects or leaves.">
@@ -164,6 +194,8 @@
       Drive
       <span class="tab-badge armed" id="driveBadge" hidden>ARMED</span>
     </button>
+    <button class="tab" role="tab" id="tabController"
+            data-tab="controller" aria-selected="false">Controller</button>
     <button class="tab" role="tab" id="tabAdvanced"
             data-tab="advanced" aria-selected="false">
       Advanced
@@ -1019,6 +1051,19 @@
           </div>
 
           <pre id="joyResult"></pre>
+
+          <div class="check-row">
+            <button class="check-btn restart-btn" id="restartBtn" type="button" data-restart>
+              Restart the dashboard on the car
+            </button>
+
+            <span class="check-note">
+              Page lagging or stopped updating? This stops and starts again every
+              node on the car: bringup, rosbridge, the camera and this page's server.
+              About a minute. The car must be stopped. (By hand on the car: Ctrl+C on
+              bringup, then start it again.)
+            </span>
+          </div>
         </div>
       </div>
 
@@ -1039,6 +1084,300 @@
 
   </div>
 
+
+  <!-- ==========================================================
+       CONTROLLER - the PS4 controller, live from /joy: what is
+       pressed lights up (js/controller.js)
+  =========================================================== -->
+  <div class="tab-panel" id="panelController" role="tabpanel" hidden>
+
+    <div class="jp-grid">
+
+      <section class="advanced-card jp-card">
+        <h3>
+          <span class="jp-title"><span id="jpTitle">PS4 controller</span>
+            <span class="jp-battery" id="jpBattery" hidden></span></span>
+          <span class="h3-note" id="jpStatus">waiting for /joy</span>
+        </h3>
+
+        <!-- which controller: the car's PS4 (/joy), or one on this device
+             through the browser (a Steam Deck), which can also drive -->
+        <div class="jp-source">
+          <div class="range-switch" role="group" aria-label="Controller">
+            <button type="button" data-jp-device="ps4">PS4 on the car</button>
+            <button type="button" data-jp-device="deck">Steam Deck (this browser)</button>
+          </div>
+        </div>
+
+        <div class="jp-stage" id="jpStage" data-live="false">
+          <!-- shared shading for both drawings. Not display:none: a gradient
+               inside a hidden <svg> does not paint anywhere. -->
+          <svg class="jp-defs" width="0" height="0" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="jpBodyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style="stop-color: var(--jp-body-top)"/>
+                <stop offset="0.55" style="stop-color: var(--jp-body)"/>
+                <stop offset="1" style="stop-color: var(--jp-body-low)"/>
+              </linearGradient>
+              <radialGradient id="jpDome" cx="0.38" cy="0.3" r="0.8">
+                <stop offset="0" style="stop-color: var(--jp-key-hi)"/>
+                <stop offset="1" style="stop-color: var(--jp-key)"/>
+              </radialGradient>
+              <radialGradient id="jpWellGrad" cx="0.5" cy="0.55" r="0.6">
+                <stop offset="0" style="stop-color: var(--jp-well-in)"/>
+                <stop offset="1" style="stop-color: var(--jp-well)"/>
+              </radialGradient>
+              <radialGradient id="jpCapGrad" cx="0.42" cy="0.36" r="0.75">
+                <stop offset="0" style="stop-color: var(--jp-cap-hi)"/>
+                <stop offset="0.7" style="stop-color: var(--jp-cap)"/>
+                <stop offset="1" style="stop-color: var(--jp-cap-low)"/>
+              </radialGradient>
+              <linearGradient id="jpPadGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style="stop-color: var(--jp-touch-top)"/>
+                <stop offset="1" style="stop-color: var(--jp-touch)"/>
+              </linearGradient>
+              <linearGradient id="jpScreenGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#1b2028"/>
+                <stop offset="0.5" stop-color="#0b0d10"/>
+                <stop offset="1" stop-color="#141820"/>
+              </linearGradient>
+              <linearGradient id="jpFillGrad" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0" stop-color="#ff5a00"/>
+                <stop offset="1" stop-color="#ffb347"/>
+              </linearGradient>
+              <filter id="jpShadow" x="-10%" y="-10%" width="120%" height="135%">
+                <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000" flood-opacity="0.35"/>
+              </filter>
+              <filter id="jpGlow" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="7" result="b"/>
+                <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <filter id="jpBarGlow" x="-20%" y="-300%" width="140%" height="700%">
+                <feGaussianBlur stdDeviation="5"/>
+              </filter>
+            </defs>
+          </svg>
+
+          <!-- PS4 controller (DualShock 4), front view -->
+          <svg class="jp-svg" id="jpSvg" viewBox="0 0 840 540" role="img"
+               aria-label="PS4 controller: pressed buttons light up">
+
+            <!-- triggers (L2 / R2): fill from the bottom as they are squeezed -->
+            <g data-ctl="l2" class="jp-trigger">
+              <path class="jp-key" d="M156 74 C156 44 176 26 216 24 C256 26 276 44 276 74 Z"/>
+              <clipPath id="jpClipL2"><path d="M156 74 C156 44 176 26 216 24 C256 26 276 44 276 74 Z"/></clipPath>
+              <rect class="jp-fill" id="jpFillL2" x="150" y="74" width="132" height="0" clip-path="url(#jpClipL2)"/>
+              <text class="jp-label" x="216" y="60">L2</text>
+            </g>
+            <g data-ctl="r2" class="jp-trigger">
+              <path class="jp-key" d="M564 74 C564 44 584 26 624 24 C664 26 684 44 684 74 Z"/>
+              <clipPath id="jpClipR2"><path d="M564 74 C564 44 584 26 624 24 C664 26 684 44 684 74 Z"/></clipPath>
+              <rect class="jp-fill" id="jpFillR2" x="558" y="74" width="132" height="0" clip-path="url(#jpClipR2)"/>
+              <text class="jp-label" x="624" y="60">R2</text>
+            </g>
+
+            <!-- bumpers (L1 / R1): the deadman buttons -->
+            <g data-ctl="l1"><path class="jp-key" d="M132 100 C140 86 160 80 214 79 C262 80 286 84 292 96 L292 102 L132 106 Z"/>
+              <text class="jp-label jp-small" x="212" y="98">L1</text></g>
+            <g data-ctl="r1"><path class="jp-key" d="M708 100 C700 86 680 80 626 79 C578 80 554 84 548 96 L548 102 L708 106 Z"/>
+              <text class="jp-label jp-small" x="628" y="98">R1</text></g>
+
+            <!-- the body, with a soft shadow, and the grips' seam -->
+            <path class="jp-body" filter="url(#jpShadow)" d="M420 104 C360 104 250 100 196 102 C150 104 116 116 96 144
+              C70 180 56 238 44 308 C32 380 28 438 50 478 C70 514 124 520 150 490 C172 464 190 428 214 396
+              C238 366 280 350 330 348 C370 346 400 348 420 348 C440 348 470 346 510 348 C560 350 602 366 626 396
+              C650 428 668 464 690 490 C716 520 770 514 790 478 C812 438 808 380 796 308 C784 238 770 180 744 144
+              C724 116 690 104 644 102 C590 100 480 104 420 104 Z"/>
+            <path class="jp-sheen" d="M110 150 C150 118 250 112 420 112 C590 112 690 118 730 150"/>
+            <path class="jp-grip" d="M88 330 C78 390 74 440 96 470 M752 330 C762 390 766 440 744 470"/>
+
+            <!-- touchpad, and the light bar along its top edge -->
+            <g data-ctl="touchpad"><rect class="jp-key jp-touch" x="298" y="110" width="244" height="120" rx="16"/>
+              <path class="jp-touch-lines" d="M330 210 h180"/></g>
+            <rect class="jp-lightbar-glow" x="318" y="104" width="204" height="6" rx="3" filter="url(#jpBarGlow)"/>
+            <rect class="jp-lightbar" x="318" y="104" width="204" height="5" rx="2.5"/>
+
+            <!-- Share / Options -->
+            <g data-ctl="share"><rect class="jp-key" x="258" y="126" width="20" height="38" rx="10"/>
+              <text class="jp-label jp-tiny" x="268" y="182">SHARE</text></g>
+            <g data-ctl="options"><rect class="jp-key" x="562" y="126" width="20" height="38" rx="10"/>
+              <text class="jp-label jp-tiny" x="572" y="182">OPTIONS</text></g>
+
+            <!-- D-pad: four arrow keys round a hub -->
+            <circle class="jp-hub" cx="178" cy="216" r="56"/>
+            <g class="jp-dpad">
+              <g data-ctl="up"><path class="jp-key" d="M163 166 h30 v30 l-15 15 l-15 -15 Z"/><path class="jp-arrow" d="M178 177 l-6 9 h12 Z"/></g>
+              <g data-ctl="down"><path class="jp-key" d="M163 266 h30 v-30 l-15 -15 l-15 15 Z"/><path class="jp-arrow" d="M178 255 l-6 -9 h12 Z"/></g>
+              <g data-ctl="left"><path class="jp-key" d="M128 201 v30 h30 l15 -15 l-15 -15 Z"/><path class="jp-arrow" d="M139 216 l9 -6 v12 Z"/></g>
+              <g data-ctl="right"><path class="jp-key" d="M228 201 v30 h-30 l-15 -15 l15 -15 Z"/><path class="jp-arrow" d="M217 216 l-9 -6 v12 Z"/></g>
+            </g>
+
+            <!-- face buttons, each glowing in its own colour when pressed -->
+            <circle class="jp-hub" cx="662" cy="216" r="64"/>
+            <g data-ctl="triangle"><circle class="jp-key jp-face" cx="662" cy="170" r="22"/>
+              <path class="jp-sym sym-triangle" d="M662 159 l10 17 h-20 Z"/></g>
+            <g data-ctl="circle"><circle class="jp-key jp-face" cx="708" cy="216" r="22"/>
+              <circle class="jp-sym sym-circle" cx="708" cy="216" r="9"/></g>
+            <g data-ctl="cross"><circle class="jp-key jp-face" cx="662" cy="262" r="22"/>
+              <path class="jp-sym sym-cross" d="M654 254 l16 16 M670 254 l-16 16"/></g>
+            <g data-ctl="square"><circle class="jp-key jp-face" cx="616" cy="216" r="22"/>
+              <rect class="jp-sym sym-square" x="608" y="208" width="16" height="16"/></g>
+
+            <!-- speaker grille -->
+            <g class="jp-grille">
+              <circle cx="404" cy="262" r="2.2"/><circle cx="414" cy="262" r="2.2"/><circle cx="424" cy="262" r="2.2"/><circle cx="434" cy="262" r="2.2"/>
+              <circle cx="409" cy="271" r="2.2"/><circle cx="419" cy="271" r="2.2"/><circle cx="429" cy="271" r="2.2"/>
+            </g>
+
+            <!-- sticks: the cap follows the axes; pressing it is L3 / R3 -->
+            <circle class="jp-well" cx="310" cy="306" r="52"/>
+            <g data-ctl="l3" class="jp-stick-g">
+              <circle class="jp-key jp-stick" id="jpStickL" cx="310" cy="306" r="34"/>
+              <circle class="jp-cap-ring" id="jpStickLRing" cx="310" cy="306" r="20"/>
+            </g>
+            <circle class="jp-well" cx="530" cy="306" r="52"/>
+            <g data-ctl="r3" class="jp-stick-g">
+              <circle class="jp-key jp-stick" id="jpStickR" cx="530" cy="306" r="34"/>
+              <circle class="jp-cap-ring" id="jpStickRRing" cx="530" cy="306" r="20"/>
+            </g>
+
+            <!-- PS button -->
+            <g data-ctl="ps"><circle class="jp-key jp-face" cx="420" cy="314" r="17"/>
+              <text class="jp-label jp-tiny" x="420" y="318">PS</text></g>
+          </svg>
+
+          <!-- Steam Deck, read through the browser's Gamepad API -->
+          <svg class="jp-svg" id="jpDeckSvg" viewBox="0 0 1000 460" role="img" hidden
+               aria-label="Steam Deck: pressed buttons light up">
+            <g data-ctl="l2" class="jp-trigger">
+              <path class="jp-key" d="M84 56 C84 28 112 12 156 12 C200 12 228 28 228 56 Z"/>
+              <clipPath id="jpDeckClipL2"><path d="M84 56 C84 28 112 12 156 12 C200 12 228 28 228 56 Z"/></clipPath>
+              <rect class="jp-fill" id="jpDeckFillL2" x="80" y="56" width="152" height="0" clip-path="url(#jpDeckClipL2)"/>
+              <text class="jp-label" x="156" y="44">L2</text>
+            </g>
+            <g data-ctl="r2" class="jp-trigger">
+              <path class="jp-key" d="M772 56 C772 28 800 12 844 12 C888 12 916 28 916 56 Z"/>
+              <clipPath id="jpDeckClipR2"><path d="M772 56 C772 28 800 12 844 12 C888 12 916 28 916 56 Z"/></clipPath>
+              <rect class="jp-fill" id="jpDeckFillR2" x="768" y="56" width="152" height="0" clip-path="url(#jpDeckClipR2)"/>
+              <text class="jp-label" x="844" y="44">R2</text>
+            </g>
+            <g data-ctl="l1"><rect class="jp-key" x="66" y="62" width="180" height="22" rx="11"/>
+              <text class="jp-label jp-small" x="156" y="78">L1</text></g>
+            <g data-ctl="r1"><rect class="jp-key" x="754" y="62" width="180" height="22" rx="11"/>
+              <text class="jp-label jp-small" x="844" y="78">R1</text></g>
+
+            <path class="jp-body" filter="url(#jpShadow)" d="M150 88 H850 C930 88 984 140 984 230 C984 330 950 398 880 398
+              C830 398 800 370 760 370 H240 C200 370 170 398 120 398 C50 398 16 330 16 230 C16 140 70 88 150 88 Z"/>
+            <path class="jp-sheen" d="M80 120 C140 100 300 98 500 98 C700 98 860 100 920 120"/>
+            <rect class="jp-screen" x="296" y="108" width="408" height="250" rx="14"/>
+            <path class="jp-screen-gloss" d="M306 118 H560 L470 348 H306 Z"/>
+            <text class="jp-label jp-small jp-faint" x="500" y="240">STEAM DECK</text>
+
+            <!-- left: D-pad, stick, trackpad -->
+            <circle class="jp-hub" cx="95" cy="172" r="48"/>
+            <g class="jp-dpad">
+              <g data-ctl="up"><path class="jp-key" d="M83 130 h24 v26 l-12 12 l-12 -12 Z"/></g>
+              <g data-ctl="down"><path class="jp-key" d="M83 214 h24 v-26 l-12 -12 l-12 12 Z"/></g>
+              <g data-ctl="left"><path class="jp-key" d="M53 160 v24 h26 l12 -12 l-12 -12 Z"/></g>
+              <g data-ctl="right"><path class="jp-key" d="M137 160 v24 h-26 l-12 -12 l12 -12 Z"/></g>
+            </g>
+            <circle class="jp-well" cx="215" cy="170" r="44"/>
+            <g data-ctl="l3" class="jp-stick-g">
+              <circle class="jp-key jp-stick" id="jpDeckStickL" cx="215" cy="170" r="28"/>
+              <circle class="jp-cap-ring" id="jpDeckStickLRing" cx="215" cy="170" r="16"/>
+            </g>
+            <rect class="jp-pad-area" x="128" y="248" width="144" height="108" rx="24"/>
+            <g data-ctl="view"><rect class="jp-key" x="152" y="104" width="30" height="15" rx="7.5"/>
+              <text class="jp-label jp-tiny" x="167" y="134">VIEW</text></g>
+            <g data-ctl="steam"><rect class="jp-key" x="232" y="366" width="56" height="18" rx="9"/>
+              <text class="jp-label jp-tiny" x="260" y="379">STEAM</text></g>
+
+            <!-- right: A B X Y, stick, trackpad -->
+            <circle class="jp-hub" cx="905" cy="172" r="56"/>
+            <g data-ctl="y"><circle class="jp-key jp-face" cx="905" cy="136" r="18"/><text class="jp-label" x="905" y="142">Y</text></g>
+            <g data-ctl="x"><circle class="jp-key jp-face" cx="868" cy="172" r="18"/><text class="jp-label" x="868" y="178">X</text></g>
+            <g data-ctl="b"><circle class="jp-key jp-face" cx="942" cy="172" r="18"/><text class="jp-label" x="942" y="178">B</text></g>
+            <g data-ctl="a"><circle class="jp-key jp-face" cx="905" cy="208" r="18"/><text class="jp-label" x="905" y="214">A</text></g>
+            <circle class="jp-well" cx="785" cy="170" r="44"/>
+            <g data-ctl="r3" class="jp-stick-g">
+              <circle class="jp-key jp-stick" id="jpDeckStickR" cx="785" cy="170" r="28"/>
+              <circle class="jp-cap-ring" id="jpDeckStickRRing" cx="785" cy="170" r="16"/>
+            </g>
+            <rect class="jp-pad-area" x="728" y="248" width="144" height="108" rx="24"/>
+            <g data-ctl="menu"><rect class="jp-key" x="818" y="104" width="30" height="15" rx="7.5"/>
+              <text class="jp-label jp-tiny" x="833" y="134">MENU</text></g>
+            <g data-ctl="quick"><rect class="jp-key" x="712" y="366" width="56" height="18" rx="9"/>
+              <text class="jp-label jp-tiny" x="740" y="379">• • •</text></g>
+
+            <!-- the back grips, drawn below -->
+            <text class="jp-label jp-tiny jp-faint" x="500" y="438">BACK GRIPS</text>
+            <g data-ctl="l4"><rect class="jp-key" x="96" y="414" width="58" height="28" rx="10"/><text class="jp-label jp-small" x="125" y="433">L4</text></g>
+            <g data-ctl="l5"><rect class="jp-key" x="164" y="414" width="58" height="28" rx="10"/><text class="jp-label jp-small" x="193" y="433">L5</text></g>
+            <g data-ctl="r4"><rect class="jp-key" x="778" y="414" width="58" height="28" rx="10"/><text class="jp-label jp-small" x="807" y="433">R4</text></g>
+            <g data-ctl="r5"><rect class="jp-key" x="846" y="414" width="58" height="28" rx="10"/><text class="jp-label jp-small" x="875" y="433">R5</text></g>
+          </svg>
+
+          <div class="jp-idle" id="jpIdle">
+            <strong id="jpIdleTitle">No controller input</strong>
+            <span id="jpIdleText">Nothing is arriving on /joy. Is the PS4 controller on and connected? The Gamepad
+              row on the Advanced tab says what the car sees.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="advanced-card jp-side">
+        <h3>
+          <span>Pressed now</span>
+          <span class="h3-note" id="jpRate"></span>
+        </h3>
+
+        <ul class="jp-held" id="jpHeld"></ul>
+
+        <div class="jp-deadman" id="jpDeadman"></div>
+
+        <!-- a button switching on and off by itself -->
+        <div class="jp-flicker" id="jpFlicker" role="alert" hidden></div>
+
+        <div class="jp-sub">Sticks and triggers</div>
+        <div class="jp-axes" id="jpAxes"></div>
+
+        <div class="jp-sub" id="jpRawTitle">Raw /joy</div>
+        <div class="jp-raw">
+          <div><span class="jp-raw-k">buttons[ ]</span><span class="jp-raw-v" id="jpRawButtons"></span></div>
+          <div><span class="jp-raw-k">axes[ ]</span><span class="jp-raw-v" id="jpRawAxes"></span></div>
+        </div>
+
+        <div class="jp-sub">Mapping</div>
+        <p class="jp-map-note" id="jpMapNote"></p>
+        <div class="jp-map-actions">
+          <button class="check-btn" id="jpMapBtn" type="button">Map buttons</button>
+          <button class="check-btn" id="jpMapReset" type="button" hidden>Use the default</button>
+        </div>
+
+        <!-- just one control: pick it here, or click it on the drawing -->
+        <div class="jp-map-one" id="jpOneRow">
+          <label for="jpOneSelect">Remap one</label>
+          <select id="jpOneSelect"></select>
+          <button class="check-btn" id="jpOneBtn" type="button">Remap</button>
+          <span class="jp-map-tip">or click it on the drawing</span>
+        </div>
+
+        <!-- the mapping walk-through: press what it asks for -->
+        <div class="jp-wizard" id="jpWizard" hidden>
+          <div class="jp-wizard-step" id="jpWizardStep"></div>
+          <div class="jp-wizard-hint" id="jpWizardHint"></div>
+          <div class="jp-map-actions">
+            <button class="check-btn" id="jpWizardIgnore" type="button" hidden
+                    title="Stop it lighting here and being counted (a button that misbehaves)">Ignore it</button>
+            <button class="check-btn" id="jpWizardSkip" type="button">Skip</button>
+            <button class="check-btn" id="jpWizardCancel" type="button">Cancel</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </div>
 </div>
 
 <!-- FOOTER -->
@@ -1086,8 +1425,12 @@
       <!-- only while a controller is connected; its PS button reconnects it -->
       <button class="top-btn cockpit-pad-off" id="cockpitPadDisconnect" type="button" hidden></button>
       <span class="hud-chip who-chip" id="cockpitWho" data-tone=""></span>
+      <!-- autonomous code: driving (red, pulsing) or standing by -->
+      <button class="hud-chip auto-chip" id="cockpitAuto" type="button" data-auto-stop hidden></button>
       <!-- armed with the controls closed: the keys still drive -->
       <span class="hud-chip keys-chip" id="cockpitKeysChip" hidden><i data-icon="joystick"></i> Keys drive: W A S D / arrows · Space stops</span>
+      <!-- a controller on this device (a Steam Deck) can drive -->
+      <span class="hud-chip keys-chip" id="cockpitDeckChip" hidden><i data-icon="gamepad"></i> Steam Deck: sticks drive · B stops</span>
     </div>
 
     <div class="cockpit-msgs">
@@ -1161,6 +1504,7 @@
     <!-- the speedometer moves here from the bottom bar -->
     <div class="rail-speedo" id="railSpeedoSlot"></div>
     <span class="rail-who" id="railWho"></span>
+    <button class="rail-auto auto-chip" id="railAuto" type="button" data-auto-stop hidden></button>
 
     <div class="rail-group" role="group" aria-label="Panes">
       <button class="top-btn rail-btn" type="button" data-pane-toggle="camera" title="Camera"><i data-icon="camera"></i><span>Camera</span></button>
@@ -1436,6 +1780,81 @@
             <button class="arm-btn" id="cockpitArm" type="button" disabled>Arm</button>
           </div>
 
+          <!-- hold to drive (the pad, keys, sticks), or an autonomous run: the
+               page drives at a set speed and steering until stopped -->
+          <div class="range-switch drive-mode" role="group" aria-label="Driving mode">
+            <button type="button" data-drive-mode="hold">Hold to drive</button>
+            <button type="button" data-drive-mode="auto">Autonomous run</button>
+          </div>
+
+          <div class="auto-panel" id="autoPanel">
+            <p class="auto-warn">The car drives itself at this speed and steering, with
+              nothing held, until you stop it or the time is up. STOP, Space or
+              Emergency stop end it; so does leaving this page.</p>
+
+            <label class="cockpit-switch auto-switch">
+              <span class="cockpit-switch-text">
+                <strong>Full speed</strong>
+                <span id="autoFullText">Your Max speed. Off: set it with the slider.</span>
+              </span>
+              <input type="checkbox" id="autoFull" role="switch" checked>
+            </label>
+
+            <label class="cockpit-switch auto-switch">
+              <span class="cockpit-switch-text">
+                <strong>Hold R1 to run</strong>
+                <span id="autoR1Sub">Hold R1 on the controller for half a second to start; let go to stop.</span>
+              </span>
+              <input type="checkbox" id="autoR1" role="switch">
+            </label>
+
+            <div class="auto-guard" id="autoGuard">
+              <label class="cockpit-switch auto-switch">
+                <span class="cockpit-switch-text">
+                  <strong>Obstacle stop</strong>
+                  <span id="autoGuardText">Needs the new system_diagnostics.py on the car.</span>
+                </span>
+                <input type="checkbox" id="autoGuardOn" role="switch" disabled>
+              </label>
+              <div class="auto-row">
+                <label for="autoGuardMargin">Keep clear</label>
+                <select id="autoGuardMargin" disabled title="Extra room, past what the car needs to brake">
+                  <option value="0.2">0.2 m</option>
+                  <option value="0.3" selected>0.3 m</option>
+                  <option value="0.5">0.5 m</option>
+                  <option value="1">1 m</option>
+                </select>
+              </div>
+            </div>
+
+            <label class="slider-row" id="autoSpeedRow">
+              <span>Speed</span>
+              <input type="range" id="autoSpeed" min="-3" max="3" step="0.05" value="0.2">
+              <strong id="autoSpeedValue">0.20 m/s</strong>
+            </label>
+
+            <label class="slider-row">
+              <span>Steering</span>
+              <input type="range" id="autoSteer" min="-0.34" max="0.34" step="0.01" value="0">
+              <strong id="autoSteerValue">0°</strong>
+            </label>
+
+            <div class="auto-row">
+              <label for="autoFor">Run for</label>
+              <select id="autoFor">
+                <option value="5">5 s</option>
+                <option value="10">10 s</option>
+                <option value="30">30 s</option>
+                <option value="60">1 min</option>
+                <option value="0" selected>until stopped</option>
+              </select>
+              <button class="link-btn" id="autoZero" type="button" title="Speed 0, steering straight">Reset</button>
+            </div>
+
+            <button class="auto-go" id="autoStart" type="button">Start autonomous run</button>
+            <div class="auto-status" id="autoStatus" role="status"></div>
+          </div>
+
           <div class="cockpit-pad-wrap">
             <div class="drive-pad" id="cockpitPad" aria-label="Drive pad: drag to drive">
               <div class="pad-axis pad-axis-x"></div>
@@ -1601,6 +2020,7 @@
 <script src="js/checks.js"></script>
 <script src="js/lidar-select.js"></script>
 <script src="js/estop.js"></script>
+<script src="js/controller.js"></script>
 <script src="js/drive.js"></script>
 <script src="js/cockpit.js"></script>
 <script src="js/radar.js"></script>

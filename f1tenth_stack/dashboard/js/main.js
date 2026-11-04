@@ -117,7 +117,7 @@ $("refreshBtn").onclick = async () => {
    straight onto it, and a reload keeps you where you were.
 ========================================================== */
 
-const TABS = ["overview", "drive", "advanced"];
+const TABS = ["overview", "drive", "advanced", "controller"];
 
 function showTab(name) {
 
@@ -150,6 +150,9 @@ function showTab(name) {
     $("panel" + id).hidden = tab !== name;
     $("tab" + id).setAttribute("aria-selected", String(tab === name));
   });
+
+  /* the Controller tab takes /joy at full rate while it shows */
+  if (typeof jpSubscribe === "function") jpSubscribe();
 
   /* the Drive tab is the driving view (cockpit.js), embedded */
   if (typeof embedCockpit === "function") {

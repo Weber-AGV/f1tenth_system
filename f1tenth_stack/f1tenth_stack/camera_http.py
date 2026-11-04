@@ -122,6 +122,42 @@ def read_camera(stream, latest):
 
 class CameraHandler(BaseHTTPRequestHandler):
 
+    # The dashboard's Restart button, when rosbridge does not answer (what
+    # makes the page "stop working" is usually rosbridge): restart everything
+    # bringup runs, as restart_stack.py does for system_diagnostics.
+    # This server is apart from rosbridge, so it still answers. It cannot see
+    # ROS, so the page disarms first and says the car must be stopped. A plain
+    # POST with "restart" as the body: no custom header, so the browser sends it
+    # without a preflight, and a stray GET (a prefetch, a crawler) never counts.
+    def do_POST(self):
+        if urlsplit(self.path).path != "/restart":
+            self.send_response(404)
+            self.end_headers()
+            return
+        length = min(int(self.headers.get("Content-Length") or 0), 64)
+        body = self.rfile.read(length).decode("utf-8", "replace").strip()
+        if body != "restart":
+            ok, msg = False, 'send "restart" as the body to confirm'
+        else:
+            try:
+                import restart_stack                        # next to this file (~/diag)
+            except ImportError:
+                try:
+                    from f1tenth_stack import restart_stack  # installed with bringup
+                except ImportError:
+                    restart_stack = None
+            if restart_stack is None:
+                ok, msg = False, "restart_stack.py is missing next to camera_http.py"
+            else:
+                import os
+                ok, msg = restart_stack.restart(os.path.dirname(os.path.abspath(__file__)))
+        reply = json.dumps({"ok": ok, "message": msg}).encode()
+        self.send_response(200 if ok else 409)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Access-Control-Allow-Origin", "*")
+        self.end_headers()
+        self.wfile.write(reply)
+
     def do_GET(self):
         # The dashboard appends ?t=<timestamp> on a reconnect so the
         # browser cannot hand back a cached failure; match on the path

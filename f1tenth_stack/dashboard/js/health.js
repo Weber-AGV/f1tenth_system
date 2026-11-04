@@ -729,6 +729,15 @@ function renderStatusFacts(data) {
       ? "Idle"
       : "—";
 
+  /* autonomous driving: off, standby, or driving (drive.js) */
+  if (typeof autonomousState === "function") {
+    const auto = autonomousState();
+    $("factAuto").textContent = auto.text;
+    $("factAutoBox").dataset.state = auto.state;
+    $("factAutoBox").title = auto.detail || "";
+    $("factAutoStop").hidden = !["on", "standby"].includes(auto.state);
+  }
+
   const up =
     EXPECTED_NODES.filter(name => runningNodes.has(name)).length;
 

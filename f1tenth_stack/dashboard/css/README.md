@@ -11,6 +11,7 @@ later file wins.
 | `overview.css` | The Overview tab: battery and computer tiles, subsystems, ROS graph, camera card, and the LiDAR card, including the Detailed view's radar panel and beam select. |
 | `drive.css` | The Drive tab's own cards (arm, pad, camera HUD, who's driving, vitals, limits) and the unlock dialogs. They sit hidden under the driving view and hold the driving state, so they are still styled. |
 | `advanced.css` | The Advanced tab: needs attention, robot system, nodes, diagnostics, topics, checks, warnings log. |
+| `controller.css` | The Controller tab: the drawing of the PS4 controller, what is pressed, the raw `/joy` chips and Map buttons. |
 | `cockpit.css` | The driving view (`js/cockpit.js`), on the Drive tab and in full screen: its top bar, panes, floating controls, LiDAR and warning, Settings, thumb sticks, speedometer, the side rail and the Record buttons. |
 
 Each file starts with a numbered list of its sections, and each section

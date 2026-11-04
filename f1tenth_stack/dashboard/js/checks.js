@@ -203,3 +203,228 @@ async function runJoyCheck() {
   }
 }
 
+
+/* ==========================================================
+   RESTART THE DASHBOARD ON THE CAR
+
+   Stops and starts again every node on the car (bringup, rosbridge, the
+   camera, the page's server), from the page - for when it lags or stops
+   updating: the bringup launch is stopped and started again with the same
+   arguments (restart_stack.py). By hand on the car, the same is Ctrl+C on
+   bringup, then bringup again. Two
+   routes, because the thing that has hung is usually rosbridge itself:
+
+   1. system_diagnostics' ~/restart_stack, over rosbridge. It refuses
+      while the car could be moving or the emergency stop is on, and that
+      refusal is final: the page does not go round it.
+   2. camera_http's POST /restart on :8082, plain HTTP, when rosbridge does
+      not answer at all. It cannot see ROS, so the page disarms first and
+      the confirmation says the car must be stopped.
+
+   Then it waits for the car to come back (rosbridge answering, this page
+   served again) and reloads, which also clears whatever made the page lag.
+========================================================== */
+
+const RESTART_ASK_MS = 6000;       // rosbridge must answer in this long
+const RESTART_PROBE_EVERY_MS = 2000;
+const RESTART_FIRST_PROBE_MS = 8000;   // nothing is back before this
+const RESTART_GIVE_UP_MS = 180000;
+
+let restartStarted = 0;
+let restartTimer = null;
+let restartProbing = false;
+
+function restartHost() {
+  try {
+    return new URL($("wsUrl").value.trim()).hostname;
+  } catch (error) {
+    return "";
+  }
+}
+
+function restartCarName() {
+  const robot = (typeof ROBOTS !== "undefined" ? ROBOTS : [])
+    .find(r => r.url === $("wsUrl").value.trim());
+  return robot ? robot.name : restartHost() || "the car";
+}
+
+function showRestart(title, text, steps, state) {
+
+  $("restartOverlay").hidden = false;
+  $("restartOverlay").dataset.state = state;       // asking, waiting, failed
+  $("restartTitle").textContent = title;
+  $("restartText").textContent = text;
+  $("restartSteps").innerHTML = steps.map(([label, done]) =>
+    `<li class="${done === true ? "done" : done === "now" ? "now" : ""}">${escapeHtml(label)}</li>`).join("");
+  $("restartWait").hidden = state !== "late";
+  $("restartClose").hidden = state === "asking" || state === "waiting";
+}
+
+function withTimeout(promise, ms) {
+  return Promise.race([promise, new Promise((_, reject) =>
+    setTimeout(() => reject(new Error("timeout")), ms))]);
+}
+
+async function runRestart() {
+
+  const car = restartCarName();
+  const host = restartHost();
+
+  if (!host) {
+    alert("Pick the car in the top bar first.");
+    return;
+  }
+
+  if (!confirm(
+    `Restart the dashboard on ${car}?\n\n` +
+    "This stops and starts again everything bringup runs on the car: " +
+    "bringup (the drive stack), rosbridge, the camera and this page's server.\n\n" +
+    "• The car must be stopped. Driving from this page is disarmed now.\n" +
+    "• Every dashboard on this car loses its connection for about a minute.\n" +
+    "• This page reloads by itself when the car is back.")) return;
+
+  if (typeof driveArmed !== "undefined" && driveArmed) disarmDrive("restarting the dashboard on the car");
+
+  showRestart(`Restarting the dashboard on ${car}`, "Asking the car…",
+    [["Ask the car to restart", "now"], ["Wait for it to come back", false], ["Reload this page", false]], "asking");
+
+  let answer = null;
+
+  /* 1. over rosbridge, which checks the car is safe to restart */
+  if (socketOpen()) {
+    try {
+      const result = await withTimeout(call(RESTART_SERVICE), RESTART_ASK_MS);
+      answer = { ok: Boolean(result.success), message: result.message || "", via: "rosbridge" };
+    } catch (error) {
+      answer = null;              // no such service, or rosbridge is stuck: try 2
+    }
+  }
+
+  /* 2. plain HTTP to the camera server, apart from rosbridge */
+  if (!answer) {
+    try {
+      const response = await withTimeout(fetch(`http://${host}:8082/restart`, {
+        method: "POST", body: "restart", cache: "no-store"
+      }), RESTART_ASK_MS);
+      const body = await response.json();
+      answer = { ok: Boolean(body.ok), message: body.message || "", via: "the camera server" };
+    } catch (error) {
+      answer = null;
+    }
+  }
+
+  if (!answer) {
+    showRestart("Could not reach the car",
+      "Neither rosbridge nor the camera server answered, so nothing was restarted. " +
+      `On the car: stop bringup (Ctrl+C) and start it again.`,
+      [["Ask the car to restart", false]], "failed");
+    return;
+  }
+
+  if (!answer.ok) {
+    showRestart("The car did not restart", answer.message,
+      [["Ask the car to restart", false]], "failed");
+    return;
+  }
+
+  restartStarted = performance.now();
+  restartWaitLoop(car, answer.via);
+}
+
+/* Is the car back? rosbridge takes a connection, and this page is served
+   again (when the car serves it). A function on its own so a test can
+   stand in for the network. */
+function restartProbe() {
+
+  return new Promise(resolve => {
+
+    let socket;
+    const done = ok => {
+      clearTimeout(timer);
+      try { socket.onopen = socket.onerror = null; socket.close(); } catch (error) {}
+      resolve(ok);
+    };
+    const timer = setTimeout(() => done(false), 2500);
+
+    try {
+      socket = new WebSocket($("wsUrl").value.trim());
+    } catch (error) {
+      done(false);
+      return;
+    }
+
+    socket.onopen = () => done(true);
+    socket.onerror = () => done(false);
+
+  }).then(async rosbridge => {
+
+    if (!rosbridge) return false;
+    if (location.protocol === "file:") return true;
+
+    try {
+      const page = await fetch(location.href, { cache: "no-store" });
+      return page.ok;
+    } catch (error) {
+      return false;
+    }
+  });
+}
+
+function restartWaitLoop(car, via) {
+
+  clearInterval(restartTimer);
+
+  const tick = async () => {
+
+    const elapsed = performance.now() - restartStarted;
+    const s = Math.floor(elapsed / 1000);
+
+    $("restartTime").textContent = Math.floor(s / 60) + ":" + String(s % 60).padStart(2, "0");
+
+    if (elapsed > RESTART_GIVE_UP_MS) {
+      clearInterval(restartTimer);
+      showRestart(`${car} has not come back yet`,
+        "It has been three minutes. On the car, `ros2 node list` says what is " +
+        "running, and /tmp/f1tenth-diag/restart.log what the restart printed.",
+        [["Asked the car to restart", true], ["Wait for it to come back", false]], "late");
+      return;
+    }
+
+    if ($("restartOverlay").dataset.state !== "waiting") {
+      showRestart(`Restarting the dashboard on ${car}`,
+        `The car is restarting (asked through ${via}). Bringup, rosbridge and the camera ` +
+        "come back one after another; this usually takes 30 to 60 seconds.",
+        [["Asked the car to restart", true], ["Wait for it to come back", "now"], ["Reload this page", false]], "waiting");
+    }
+
+    if (elapsed < RESTART_FIRST_PROBE_MS || restartProbing) return;
+
+    restartProbing = true;
+    const back = await restartProbe();
+    restartProbing = false;
+
+    if (back) {
+      clearInterval(restartTimer);
+      showRestart(`${car} is back`, "Reloading this page…",
+        [["Asked the car to restart", true], ["Wait for it to come back", true], ["Reload this page", "now"]], "waiting");
+      setTimeout(() => location.reload(), 600);
+    }
+  };
+
+  tick();
+  restartTimer = setInterval(tick, RESTART_PROBE_EVERY_MS);
+}
+
+document.querySelectorAll("[data-restart]").forEach(button => {
+  button.onclick = runRestart;
+});
+
+$("restartClose").onclick = () => {
+  clearInterval(restartTimer);
+  $("restartOverlay").hidden = true;
+};
+
+$("restartWait").onclick = () => {
+  restartStarted = performance.now() - RESTART_FIRST_PROBE_MS;
+  restartWaitLoop(restartCarName(), "the car");
+};

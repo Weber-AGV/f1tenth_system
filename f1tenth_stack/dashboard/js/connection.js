@@ -275,6 +275,9 @@ function handleMessage(message) {
   else if (topicName === "/joy") {
 
     onJoy(message.msg);
+
+    /* the Controller tab's live drawing (controller.js) */
+    if (typeof onControllerJoy === "function") onControllerJoy(message.msg);
   }
 }
 
