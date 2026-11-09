@@ -153,6 +153,7 @@ It stops the bringup launch and starts it again with the same arguments, so ever
 It asks first, disarms driving from this page, then shows a panel while the car restarts (usually 30 to 60 seconds) and **reloads the page by itself** when the car is back. Every dashboard on that car loses its connection meanwhile. The same button is on the red **NO DATA FROM THE ROBOT** bar.
 
 - **It refuses** while the emergency stop is on (a restart would bring the drive chain back up running), while someone holds L1 or R1 on the controller, or while a dashboard is driving. It says which.
+- **Pressing it again within 90 seconds** of a restart starts no second one: the page waits for the restart already under way.
 - **It still works when rosbridge is stuck**, which is usually why the page stopped: it then asks the car's camera server instead. That route cannot see whether the car is moving, so make sure it is stopped.
 - **If nothing answers**, the car is off the network or the dashboard is not running at all; it says so, with the command to run on the car.
 - **If the car has not come back after three minutes**, it says so: `ros2 node list` on the car shows what is running, and `/tmp/f1tenth-diag/restart.log` what the restart printed.
