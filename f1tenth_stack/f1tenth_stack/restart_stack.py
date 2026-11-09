@@ -164,13 +164,24 @@ def _restart_bringup(pid, args):
     """
     Stop the bringup launch, sweep what it left, start it again.
 
-    Stopped with INT, as Ctrl+C would; started with the same arguments. The
-    pattern goes in through the environment: in the shell's own command
-    line, pkill -f would match the shell and kill it.
+    Stopped with INT the way launch expects. `ros2 launch` started from a
+    terminal (stdin a tty) assumes Ctrl+C reached its whole process group and
+    passes nothing on to its nodes, so INT to launch alone left every node
+    waiting out launch's 5 s before SIGTERM: such a launch gets INT to its
+    group, if it leads one. A launch without a terminal (as this restart
+    starts it) passes INT on itself, and a group INT there would reach each
+    node twice, so it gets INT alone.
+    Started again with the same arguments. The pattern goes in through the
+    environment: in the shell's own command line, pkill -f would match the
+    shell and kill it.
     """
     env = dict(os.environ, BRINGUP_PID=str(pid), BRINGUP_LEFTOVERS=BRINGUP_LEFTOVERS,
                BRINGUP_STOP_S=str(BRINGUP_STOP_S))
-    shell = ('sleep 1; kill -INT "$BRINGUP_PID"; '
+    shell = ('sleep 1; target="$BRINGUP_PID"; '
+             'case "$(readlink /proc/"$BRINGUP_PID"/fd/0)" in /dev/pts/*|/dev/tty*) '
+             '[ "$(ps -o pgid= -p "$BRINGUP_PID" | tr -d " ")" = "$BRINGUP_PID" ] && '
+             'target="-$BRINGUP_PID";; esac; '
+             'kill -INT -- "$target"; '
              'for _ in $(seq 1 "$BRINGUP_STOP_S"); do '
              'kill -0 "$BRINGUP_PID" 2>/dev/null || break; sleep 1; done; '
              'kill -KILL "$BRINGUP_PID" 2>/dev/null; '

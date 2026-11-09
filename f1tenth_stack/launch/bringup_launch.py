@@ -206,8 +206,12 @@ def generate_launch_description():
         ],
         condition=IfCondition(LaunchConfiguration('use_camera'))
     )
-    camera_http_proxy = ExecuteProcess(
-        cmd=['ros2', 'run', 'f1tenth_stack', 'camera_http'],
+    # Node, not `ros2 run`: launch runs the executable itself, so a stop's
+    # SIGINT reaches camera_http. `ros2 run` does not pass SIGINT on, which
+    # left camera_http waiting out launch's 5 s and then orphaned.
+    camera_http_proxy = Node(
+        package='f1tenth_stack',
+        executable='camera_http',
         condition=IfCondition(LaunchConfiguration('use_camera'))
     )
 
