@@ -19,13 +19,13 @@
      after an update: change it (the same in all of them) when these change. -->
 <!-- One stylesheet per area of the page, loaded in this order (later
      files may override earlier ones). css/README.md says what is where. -->
-<link rel="stylesheet" href="css/base.css?v=20261109f">      <!-- colours, reset, icons, shared buttons -->
+<link rel="stylesheet" href="css/base.css?v=20261109g">      <!-- colours, reset, icons, shared buttons -->
 <link rel="stylesheet" href="css/topbar.css?v=20261109f">    <!-- top bar, emergency stop, status banner, tabs, footer -->
 <link rel="stylesheet" href="css/overview.css?v=20261109f">  <!-- Overview tab, the LiDAR card and its radar panel -->
 <link rel="stylesheet" href="css/drive.css?v=20261109f">     <!-- the Drive tab's own cards and the unlock dialogs -->
 <link rel="stylesheet" href="css/advanced.css?v=20261109f">  <!-- Advanced tab -->
 <link rel="stylesheet" href="css/controller.css?v=20261109f"> <!-- Controller tab: the PS4 controller, live -->
-<link rel="stylesheet" href="css/cockpit.css?v=20261109f">   <!-- the driving view: Drive tab and full screen -->
+<link rel="stylesheet" href="css/cockpit.css?v=20261109g">   <!-- the driving view: Drive tab and full screen -->
 </head>
 
 <body>
@@ -1697,6 +1697,14 @@
         <h3>Screen</h3>
         <label class="cockpit-switch">
           <span class="cockpit-switch-text">
+            <strong>Big controls</strong>
+            <span>Huge buttons, switches and sliders, with - / + beside each slider. For touch screens like the Steam Deck.</span>
+          </span>
+          <input type="checkbox" id="bigToggle" role="switch">
+        </label>
+
+        <label class="cockpit-switch">
+          <span class="cockpit-switch-text">
             <strong>Keep the screen awake</strong>
             <span>No dimming or locking while this view is open</span>
           </span>
@@ -2132,9 +2140,11 @@
 <script src="js/avoid.js?v=20261109f"></script>
 <script src="js/drive.js?v=20261109f"></script>
 <script src="js/controller-speed.js?v=20261109f"></script>
-<script src="js/cockpit.js?v=20261109f"></script>
+<script src="js/cockpit.js?v=20261109g"></script>
 <script src="js/radar.js?v=20261109f"></script>
 <script src="js/main.js?v=20261109f"></script>
+<!-- after main.js: reads isDeck -->
+<script src="js/deck.js?v=20261109h"></script>
 
 </body>
 </html>

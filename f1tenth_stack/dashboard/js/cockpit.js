@@ -1999,6 +1999,65 @@ function rememberSwitch(id, key) {
 
 rememberSwitch("wakeToggle", "cockpitWake");
 rememberSwitch("buzzToggle", "cockpitBuzz");
+/* on by default on the Steam Deck (?deck=1, see main.js isDeck); a
+   saved choice still wins */
+$("bigToggle").checked = new URLSearchParams(location.search).get("deck") === "1";
+rememberSwitch("bigToggle", "cockpitBig");
+
+/* Big controls: a slider is a poor target for a thumb (Speed is -3 to
+   3 m/s in 0.05 steps), so each panel slider gets - / + buttons, shown
+   only in this mode (css: html.big-controls). Hold one to keep stepping.
+   They fire "input" like a drag does, so every listener follows. */
+function applyBigControls() {
+  document.documentElement.classList.toggle("big-controls", $("bigToggle").checked);
+}
+
+$("bigToggle").addEventListener("change", applyBigControls);
+applyBigControls();
+
+document.querySelectorAll(".cockpit-panel .slider-row input[type=range]").forEach(input => {
+
+  const row = input.closest("label");
+
+  /* the row is a <label>: point it at the slider, or a tap on its text
+     would press the first button inside it (the -) */
+  row.htmlFor = input.id;
+
+  const step = dir => {
+    if (input.disabled) return;
+    if (dir > 0) input.stepUp(); else input.stepDown();
+    input.dispatchEvent(new Event("input", { bubbles: true }));
+    input.dispatchEvent(new Event("change", { bubbles: true }));
+  };
+
+  [-1, 1].forEach(dir => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "slider-step";
+    button.textContent = dir > 0 ? "+" : "−";
+    button.setAttribute("aria-label", (dir > 0 ? "More " : "Less ") +
+      row.querySelector("span").textContent.toLowerCase());
+
+    let timer = null;
+    const stop = () => { clearTimeout(timer); timer = null; };
+    const repeat = delay => {
+      timer = setTimeout(() => { step(dir); repeat(80); }, delay);
+    };
+
+    button.addEventListener("pointerdown", event => {
+      event.preventDefault();
+      step(dir);
+      repeat(400);
+    });
+    ["pointerup", "pointerleave", "pointercancel"].forEach(type =>
+      button.addEventListener(type, stop));
+    button.addEventListener("click", event => {
+      if (event.detail === 0) step(dir);    // keyboard Enter / Space
+    });
+
+    if (dir < 0) input.before(button); else input.after(button);
+  });
+});
 document.addEventListener("visibilitychange", updateWakeLock);
 setInterval(updateWakeLock, 2000);    // follows open / close / tab changes
 
@@ -2007,7 +2066,7 @@ setInterval(updateWakeLock, 2000);    // follows open / close / tab changes
 const VIEW_KEYS = ["cockpitLayouts", "cockpitTabLayout", "cockpitBarHidden",
   "cockpitControlsOnly", "cockpitGlow", "cockpitWarn", "cockpitLayout",
   "cockpitFloat", "cockpitUnits", "cockpitWake", "cockpitBuzz", "cockpitRail",
-  "radarSweep"];
+  "cockpitBig", "radarSweep"];
 
 $("cockpitResetAll").onclick = () => {
 

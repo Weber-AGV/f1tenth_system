@@ -567,9 +567,11 @@ The Drive tab and full screen are one view, built from panes: Camera, LiDAR and 
 
 **Latency.** Every 2 s while the view is open, the page calls rosapi's `get_time` and times the answer; the chip shows the median of the last five, green under 50 ms, amber from 50 ms, red from 120 ms. It is the round trip, so a command takes about half of it to reach the car. It hides when the service does not answer rather than show a guess.
 
-**Settings** holds every "how it looks" option in one panel: the arrangement switches above, Hide the top bar, Side rail (left or right), Controls only (phones), the edge lights and the "Very close" warning, the LiDAR view, range and sweep line, speed units, keep the screen awake, buzz when something is very close (phones), thumb stick placement, reconnect camera, and **Reset all view settings**, which clears them all and reloads the page.
+**Settings** holds every "how it looks" option in one panel: the arrangement switches above, Hide the top bar, Side rail (left or right), Controls only (phones), the edge lights and the "Very close" warning, the LiDAR view, range and sweep line, speed units, **Big controls** (thumb-sized buttons, switches and sliders, with - / + beside each slider; on by default with `?deck=1`), keep the screen awake, buzz when something is very close (phones), thumb stick placement, reconnect camera, and **Reset all view settings**, which clears them all and reloads the page.
 
 **Phones** (anything touch-first, or 900 px wide or less): one picture at a time, Camera and LiDAR taking turns (unless the LiDAR floats over the camera). Driving needs the phone sideways and full screen, so turning Controls on from the Drive tab opens full screen; the controls are then a steering stick, a throttle stick and STOP. Turning the phone upright disarms.
+
+**Steam Deck** (`?deck=1`, `dashboard/js/deck.js`): swipe, D-pad and left stick scroll, L1 / R1 switch tabs while disarmed, and dragging the controls card scrolls it. Text selection, the long-press menu and image dragging are blocked, since the Deck's trackpad is a mouse.
 
 **Where it is saved.** All of these settings are kept per browser in `localStorage`, under the keys listed in `VIEW_KEYS` in `dashboard/js/cockpit.js`; another browser or device starts from the defaults.
 

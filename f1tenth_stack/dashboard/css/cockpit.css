@@ -3235,3 +3235,172 @@ body:has(.cockpit.full:not([hidden])) {
     padding: 0;
   }
 }
+
+/* ------------------------------------------------------------------
+   BIG CONTROLS (Settings > Screen, js/cockpit.js applyBigControls)
+   Thumb-sized targets for touch screens like the Steam Deck: every
+   button, switch, select and slider in the controls card grows, and
+   each slider gets - / + buttons (.slider-step, hidden otherwise).
+   ------------------------------------------------------------------ */
+
+.slider-step {
+  display: none;
+}
+
+/* two lines, so it fits the narrow floating card: the name and value,
+   then - slider + across the whole width */
+html.big-controls .cockpit-panel .slider-row {
+  grid-template-columns: 56px minmax(0, 1fr) 56px;
+  grid-template-areas:
+    "name name value"
+    "less slider more";
+  gap: 6px 10px;
+  margin: 10px 0;
+  font-size: 16px;
+}
+
+html.big-controls .cockpit-panel .slider-row > span { grid-area: name; }
+html.big-controls .cockpit-panel .slider-row > strong { grid-area: value; }
+html.big-controls .cockpit-panel .slider-row > input { grid-area: slider; }
+html.big-controls .cockpit-panel .slider-row > .slider-step:first-of-type { grid-area: less; }
+html.big-controls .cockpit-panel .slider-row > .slider-step:last-of-type { grid-area: more; }
+
+html.big-controls .cockpit-panel .slider-step {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: var(--surface-3);
+  color: inherit;
+  font: inherit;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1;
+  cursor: pointer;
+  touch-action: manipulation;
+  user-select: none;
+}
+
+html.big-controls .cockpit-panel .slider-step:active {
+  background: var(--orange);
+  border-color: var(--orange);
+}
+
+/* full speed locks the Speed slider: its buttons fade with it */
+html.big-controls .auto-panel .slider-row.locked .slider-step {
+  opacity: .45;
+  cursor: default;
+}
+
+/* the slider itself: a fat track and a thumb you can actually hit */
+html.big-controls .cockpit-panel .slider-row input[type=range] {
+  -webkit-appearance: none;
+  appearance: none;
+  height: 56px;
+  background: transparent;
+}
+
+html.big-controls .cockpit-panel .slider-row input[type=range]::-moz-range-track {
+  height: 12px;
+  border-radius: 99px;
+  background: var(--surface-3);
+}
+
+html.big-controls .cockpit-panel .slider-row input[type=range]::-moz-range-progress {
+  height: 12px;
+  border-radius: 99px;
+  background: var(--orange);
+}
+
+html.big-controls .cockpit-panel .slider-row input[type=range]::-moz-range-thumb {
+  width: 40px;
+  height: 40px;
+  border: 3px solid var(--orange);
+  border-radius: 50%;
+  background: #fff;
+}
+
+html.big-controls .cockpit-panel .slider-row input[type=range]::-webkit-slider-runnable-track {
+  height: 12px;
+  border-radius: 99px;
+  background: var(--surface-3);
+}
+
+html.big-controls .cockpit-panel .slider-row input[type=range]::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 40px;
+  height: 40px;
+  margin-top: -14px;
+  border: 3px solid var(--orange);
+  border-radius: 50%;
+  background: #fff;
+}
+
+html.big-controls .cockpit-panel .drive-mode {
+  height: 56px;
+}
+
+html.big-controls .cockpit-panel .drive-mode button,
+html.big-controls .cockpit-panel .arm-btn,
+html.big-controls .cockpit-panel .auto-row select,
+html.big-controls .cockpit-panel .auto-row .link-btn {
+  min-height: 56px;
+  font-size: 17px;
+}
+
+html.big-controls .cockpit-panel .auto-row .link-btn {
+  padding: 0 18px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+}
+
+html.big-controls .auto-go {
+  min-height: 64px;
+  font-size: 19px;
+}
+
+html.big-controls .cockpit-panel .arm-check {
+  font-size: 16px;
+}
+
+html.big-controls .cockpit-panel .arm-check input {
+  width: 30px;
+  height: 30px;
+}
+
+html.big-controls .cockpit-switch {
+  padding: 14px 14px;
+}
+
+html.big-controls .cockpit-switch-text strong {
+  font-size: 16px;
+}
+
+html.big-controls .cockpit-switch-text span {
+  font-size: 13.5px;
+}
+
+html.big-controls .cockpit-switch input {
+  width: 64px;
+  height: 36px;
+}
+
+html.big-controls .cockpit-switch input::after {
+  width: 30px;
+  height: 30px;
+}
+
+html.big-controls .cockpit-switch input:checked::after {
+  transform: translateX(28px);
+}
+
+/* the PS4 top speed - / + in the top bar and the side rail */
+html.big-controls .cockpit .cspeed-step {
+  min-width: 52px;
+  min-height: 52px;
+  font-size: 24px;
+}
