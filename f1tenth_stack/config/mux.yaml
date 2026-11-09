@@ -9,3 +9,11 @@ ackermann_mux:
         topic   : teleop
         timeout : 0.2
         priority: 100
+    # Emergency stop (system_diagnostics.py): while /emergency_stop is true
+    # the mux forwards no input at all - pad, page or autonomous. 255 is above
+    # every input; timeout 0.0 = never expires, so only true locks it.
+    locks:
+      emergency_stop:
+        topic   : emergency_stop
+        timeout : 0.0
+        priority: 255

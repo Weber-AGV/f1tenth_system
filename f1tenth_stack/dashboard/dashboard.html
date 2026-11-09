@@ -1,0 +1,2140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+
+<title>F1TENTH System Status</title>
+
+<!-- Theme applied before first paint so a dark reload never
+     flashes white. A stored choice wins; otherwise the OS decides. -->
+<script>
+  try {
+    const theme = localStorage.getItem("theme");
+    if (theme) document.documentElement.dataset.theme = theme;
+  } catch (error) {}
+</script>
+
+<!-- The ?v= on every stylesheet and script makes browsers fetch the new file
+     after an update: change it (the same in all of them) when these change. -->
+<!-- One stylesheet per area of the page, loaded in this order (later
+     files may override earlier ones). css/README.md says what is where. -->
+<link rel="stylesheet" href="css/base.css?v=20261109f">      <!-- colours, reset, icons, shared buttons -->
+<link rel="stylesheet" href="css/topbar.css?v=20261109f">    <!-- top bar, emergency stop, status banner, tabs, footer -->
+<link rel="stylesheet" href="css/overview.css?v=20261109f">  <!-- Overview tab, the LiDAR card and its radar panel -->
+<link rel="stylesheet" href="css/drive.css?v=20261109f">     <!-- the Drive tab's own cards and the unlock dialogs -->
+<link rel="stylesheet" href="css/advanced.css?v=20261109f">  <!-- Advanced tab -->
+<link rel="stylesheet" href="css/controller.css?v=20261109f"> <!-- Controller tab: the PS4 controller, live -->
+<link rel="stylesheet" href="css/cockpit.css?v=20261109f">   <!-- the driving view: Drive tab and full screen -->
+</head>
+
+<body>
+
+<!-- ============================================================
+     TOP BAR — connection, refresh and theme, on every tab, so
+     switching robots never means hunting for a settings panel.
+============================================================= -->
+<header class="topbar">
+
+  <form class="topbar-conn" id="connForm" autocomplete="off">
+    <span class="conn-status">
+      <span class="connection-dot" id="connDot"></span>
+      <strong id="connLabel">CONNECTING...</strong>
+    </span>
+
+    <!-- one joined field: pick a car (ROBOTS in config.js), its address
+         fills in and stays editable for any other one, then Connect -->
+    <div class="conn-field">
+      <label class="conn-robot" title="Pick a robot to connect to">
+        <i data-icon="car"></i>
+        <select class="robot-pick" id="robotPick" aria-label="Robot"></select>
+        <i class="conn-caret" data-icon="chevronDown"></i>
+      </label>
+
+      <label class="conn-addr">
+        <i data-icon="link"></i>
+        <input id="wsUrl" spellcheck="false"
+               aria-label="rosbridge address"
+               title="rosbridge WebSocket address — edit it, then press Enter or Connect">
+      </label>
+
+      <button class="conn-go" id="connectBtn" type="submit"><i data-icon="plug"></i><span>Connect</span></button>
+    </div>
+
+    <!-- phones/tablets only: folds the bar down to status + tabs -->
+    <button class="top-btn topbar-toggle" id="topbarToggle" type="button"
+            aria-expanded="true" aria-controls="connForm"
+            aria-label="Hide connection settings"><span class="toggle-word">Hide</span> <i class="toggle-arrow" data-icon="chevronUp"></i></button>
+  </form>
+
+  <div class="topbar-actions">
+    <button class="top-btn" id="refreshBtn" type="button" aria-label="Refresh"
+            title="Reconnect and rescan the ROS graph">
+      <i class="refresh-symbol" data-icon="refresh"></i>
+      <span id="refreshLabel">Refresh</span>
+    </button>
+
+    <div class="theme-switch" role="group" aria-label="Colour theme">
+      <button type="button" data-theme-choice="light" title="Light mode"><i data-icon="sun"></i> Light</button>
+      <button type="button" data-theme-choice="dark" title="Dark mode"><i data-icon="moon"></i> Dark</button>
+    </div>
+
+    <!-- Steam Deck only (?deck=1, from open_dashboard.sh): kiosk mode
+         has no window controls, so the page closes itself (main.js) -->
+    <button class="top-btn" type="button" data-quit hidden
+            title="Close the dashboard"><i data-icon="power"></i> Close</button>
+
+    <!-- stops the car for EVERYONE — controller, this page, autonomous.
+         Last in the bar and set apart, so it is always in the same
+         corner and never hit on the way to Refresh. -->
+    <span class="topbar-sep" aria-hidden="true"></span>
+    <button class="estop-btn" id="estopBtn" type="button"
+            title="Emergency stop: the car stops for everyone and stays stopped, even if someone is driving with the controller">
+      <i data-icon="stopSign"></i><span class="estop-long">Emergency stop</span><span class="estop-short">E-stop</span>
+    </button>
+  </div>
+
+</header>
+
+<div class="conn-hint" id="connHint" hidden></div>
+
+<!-- a short message about what just happened (stopping autonomous code) -->
+<div class="toast" id="toast" role="status" hidden></div>
+
+<!-- the car's PS4 top speed (controller-speed.js fills every data-cspeed):
+     the Drive tab's top bar and side rail, and the chip in the footer on the
+     other tabs, open this popup; the same control is on the Controller tab
+     and in the phone Limits drawer -->
+<div class="cspeed-pop" id="cspeedPop" role="dialog" aria-label="PS4 controller top speed" hidden>
+  <div class="cspeed" data-cspeed></div>
+</div>
+
+<!-- restarting the dashboard on the car (checks.js): waits for the car to
+     come back, then reloads this page -->
+<div class="restart-overlay" id="restartOverlay" hidden role="alertdialog"
+     aria-labelledby="restartTitle" aria-describedby="restartText">
+  <div class="restart-box">
+    <div class="restart-spin" id="restartSpin" aria-hidden="true"></div>
+    <h2 id="restartTitle">Restarting the dashboard on the car</h2>
+    <p id="restartText"></p>
+    <ol class="restart-steps" id="restartSteps"></ol>
+    <div class="restart-time" id="restartTime">0:00</div>
+    <div class="restart-actions">
+      <button class="check-btn" id="restartWait" type="button" hidden>Keep waiting</button>
+      <button class="check-btn" id="restartClose" type="button" hidden>Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- shown on every tab while the emergency stop is on (or failed) -->
+<div class="estop-bar" id="estopBar" hidden role="alert">
+  <div class="estop-msg">
+    <div id="estopText"></div>
+    <div class="estop-detail" id="estopDetail"></div>
+  </div>
+  <button class="estop-release" id="estopRelease" type="button">Allow driving again</button>
+</div>
+
+<div class="page">
+
+  <!-- HEADER -->
+  <div class="top-header">
+    <div class="title">
+      <h1>Robot Status</h1>
+      <p>Real-time overview of robot health</p>
+    </div>
+
+    <div class="last-updated" id="lastUpdated">
+      last updated: never
+    </div>
+  </div>
+
+  <div id="staleBar">
+    NO DATA FROM THE ROBOT — this page may be showing stale information
+    <button class="stale-restart" type="button" data-restart>Restart the dashboard on the car</button>
+  </div>
+
+  <div id="limitBar"></div>
+
+  <!-- OVERALL STATUS — the answer to "can I drive?", on every tab -->
+  <section class="status-banner" id="statusBanner">
+
+    <div class="overall-icon" id="overallIcon">?</div>
+
+    <div class="status-main">
+      <div class="overall-text" id="overallStatus">UNKNOWN</div>
+      <div class="overall-note" id="overallNote">Waiting for robot data</div>
+    </div>
+
+    <div class="status-facts">
+      <div>
+        <span class="k">Subsystems</span>
+        <span class="v" id="factSubsystems">—</span>
+      </div>
+
+      <div>
+        <span class="k">Control</span>
+        <span class="v" id="factControl">—</span>
+      </div>
+
+      <div>
+        <span class="k">Nodes</span>
+        <span class="v" id="factNodes">—</span>
+      </div>
+
+      <!-- is autonomous code driving the car? (drive.js autonomousState) -->
+      <div class="fact-auto" id="factAutoBox" data-state="unknown">
+        <span class="k">Autonomous</span>
+        <span class="v"><span class="auto-dot"></span><span id="factAuto">—</span>
+          <button class="auto-stop" id="factAutoStop" type="button" data-auto-stop hidden
+                  title="Stop it: ends this page's autonomous run, or stops the car's ros2 topic pub and sends zero speed">Stop</button></span>
+      </div>
+
+      <!-- how many people have the dashboard open -->
+      <div id="clientsFooter"
+           title="People with the dashboard open right now (rosbridge connections, including you). rosbridge serves 10 at once; the 11th onward gets no data. Updates when someone connects or leaves.">
+        <span class="k">Connected</span>
+        <span class="v" id="clientsValue">—</span>
+      </div>
+    </div>
+
+  </section>
+
+  <!-- TABS -->
+  <nav class="tabs" role="tablist">
+    <button class="tab" role="tab" id="tabOverview"
+            data-tab="overview" aria-selected="true">Overview</button>
+    <button class="tab" role="tab" id="tabDrive"
+            data-tab="drive" aria-selected="false">
+      Drive
+      <span class="tab-badge armed" id="driveBadge" hidden>ARMED</span>
+    </button>
+    <button class="tab" role="tab" id="tabController"
+            data-tab="controller" aria-selected="false">Controller</button>
+    <button class="tab" role="tab" id="tabAdvanced"
+            data-tab="advanced" aria-selected="false">
+      Advanced
+      <span class="tab-badge" id="advancedBadge" hidden></span>
+    </button>
+  </nav>
+
+  <!-- ==========================================================
+       OVERVIEW
+  =========================================================== -->
+  <div class="tab-panel" id="panelOverview" role="tabpanel">
+
+  <!-- Battery first — it is the single biggest cause of trouble
+       on this car, and a flat pack looks like a dozen unrelated
+       faults. Then the compute metrics that explain "the board
+       started dropping data". -->
+  <section class="critical-grid">
+
+    <div class="summary-card battery-card">
+      <div class="battery-main">
+        <div class="label">Battery</div>
+
+        <div class="battery-voltage" id="batteryVoltage">
+          --.- V
+        </div>
+
+        <div class="battery-note" id="batteryNote">
+          Waiting for /sensors/core
+        </div>
+
+        <div class="battery-bar">
+          <div class="battery-bar-fill" id="batteryBar"></div>
+        </div>
+      </div>
+
+      <div>
+        <div class="battery-gauge">
+          <div class="gauge-ring"></div>
+          <div class="gauge-inner"></div>
+          <div class="gauge-needle" id="batteryNeedle"></div>
+          <div class="gauge-center"></div>
+        </div>
+
+        <div class="gauge-caption" id="batteryPercent">--</div>
+      </div>
+    </div>
+
+    <div class="metrics" id="metricTiles"></div>
+
+  </section>
+
+  <!-- SUBSYSTEMS + ROS GRAPH — what each part of the car is doing
+       (problems first), and the ROS processes behind it. Two panels,
+       one height; the subsystems get the wider one. -->
+  <section class="main-grid">
+
+    <div class="side-card square sub-panel">
+      <h2 class="split-head">
+        <span>Subsystems</span>
+        <span class="h3-note" id="subsystemSummary"></span>
+      </h2>
+
+      <!-- desktop: the table; phones: one card per subsystem -->
+      <div class="subsystem-wrap">
+        <table class="subsystem-table">
+
+          <thead>
+            <tr>
+              <th>Subsystem</th>
+              <th>Node / Source</th>
+              <th>Status</th>
+              <th>Details</th>
+            </tr>
+          </thead>
+
+          <tbody id="subsystemRows"></tbody>
+
+        </table>
+      </div>
+
+      <div class="sub-grid" id="subsystemCards"></div>
+    </div>
+
+    <div class="side-card square graph-side">
+      <h2 class="split-head">
+        <span>ROS Graph</span>
+        <span class="h3-note" id="graphSummary">not connected</span>
+      </h2>
+
+
+        <div class="readout-grid">
+          <div>
+            <span class="k">Online nodes</span>
+            <span class="v" id="onlineNodes">0</span>
+            <span class="n" id="nodeExpected">of 8 expected</span>
+          </div>
+
+          <div>
+            <span class="k">Active topics</span>
+            <span class="v" id="activeTopics">0</span>
+            <span class="n" id="topicExpected">waiting for ROS graph</span>
+          </div>
+
+          <div>
+            <span class="k">Uptime</span>
+            <span class="v" id="uptime">--:--:--</span>
+            <span class="n" id="uptimeNote">waiting for system diagnostics</span>
+          </div>
+
+          <div>
+            <span class="k">Diagnostics</span>
+
+            <span class="v diag-inline">
+              <span class="ok-color" id="diagOk">0</span>
+              <span class="warn-color" id="diagWarn">0</span>
+              <span class="err-color" id="diagError">0</span>
+              <span class="unknown-color" id="diagStale">0</span>
+            </span>
+
+            <span class="n">ok · warn · error · stale</span>
+          </div>
+        </div>
+
+        <div class="graph-sub">Expected nodes</div>
+        <ul class="node-list" id="graphNodes"></ul>
+
+        <div class="graph-sub">Key topics</div>
+        <ul class="topic-list" id="graphTopics"></ul>
+    </div>
+
+  </section>
+
+  <!-- LIVE DATA — not "is it connected", but what it is seeing -->
+  <section class="live-grid">
+
+    <div class="live-card">
+      <h2>
+        <span>Camera</span>
+        <span class="cam-tools">
+          <button class="link-btn" type="button" data-cockpit-open="camera"
+                  title="Camera full screen, with battery and speed on top"><i data-icon="maximize"></i> Full screen</button>
+          <button class="link-btn" type="button" data-cockpit-open="watch"
+                  title="Camera and LiDAR side by side, full screen"><i data-icon="split"></i> Split</button>
+          <span class="live-tag" id="camTag">no stream</span>
+        </span>
+      </h2>
+
+      <!-- One live stream, moved between here and the Drive tab
+           (showTab), so the camera is never streamed twice. -->
+      <div id="cameraHome">
+        <div class="stream-box" id="cameraBox">
+          <img id="cameraImage" alt="Live camera stream" hidden>
+
+          <!-- while recording: travels with the picture to the Drive tab and full screen -->
+          <span class="rec-badge" id="recBadge" hidden><span class="rec-dot"></span>REC <span id="recTime">0:00</span></span>
+
+          <div class="stream-message" id="camMessage">Not connected</div>
+        </div>
+      </div>
+
+      <!-- connects on its own whenever a robot does (camera.js);
+           the address is only for an unusual setup -->
+      <div class="camera-controls">
+        <span class="camera-source" id="cameraSource">Automatic · follows the robot</span>
+        <button class="check-btn record-btn" id="cameraRecordBtn" type="button" data-record></button>
+        <button class="check-btn" id="cameraSnapBtn">Take Picture</button>
+      </div>
+
+      <details class="camera-edit" id="cameraEdit">
+        <summary>Change camera address</summary>
+        <div class="camera-edit-row">
+          <input id="cameraUrl" spellcheck="false"
+                 aria-label="camera stream URL">
+          <button class="check-btn" id="cameraConnectBtn" type="button">Connect</button>
+          <button class="check-btn" id="cameraAutoBtn" type="button" hidden>Use automatic</button>
+        </div>
+      </details>
+
+      <div class="card-hint" id="cameraHint" hidden></div>
+
+      <div class="snapshot" id="snapshot" hidden>
+        <img id="snapshotImage" alt="Captured camera frame">
+
+        <div class="snapshot-actions">
+          <a class="check-btn" id="snapshotSave" download>Save PNG</a>
+          <button class="check-btn" id="snapshotClose">Close</button>
+          <span class="live-tag" id="snapshotTime"></span>
+        </div>
+      </div>
+    </div>
+
+    <div class="live-card lidar-card" data-view="lines">
+      <h2>
+        <span>LiDAR</span>
+        <span class="live-tag" id="lidarTag">waiting</span>
+      </h2>
+
+      <div class="lidar-status tone-none" id="lidarStatus">
+        <strong>No LiDAR data yet.</strong> Waiting for the sensor.
+      </div>
+
+      <div class="lidar-toolbar">
+        <span class="lidar-toolbar-label">View</span>
+        <div class="range-switch view-switch" role="group" aria-label="LiDAR view">
+          <button type="button" data-lidar-view="lines" title="The original radar: green outline and distance circles">Lines</button>
+          <button type="button" data-lidar-view="detailed" title="Coloured dots, open space and a movement trail">Detailed</button>
+        </div>
+        <button type="button" class="select-toggle" data-beam-select aria-pressed="false"
+                title="Pick a range of beams by index, for your own test code"><i data-icon="crosshair"></i> Select beams</button>
+        <!-- Detailed only: the radar's sweep line -->
+        <button type="button" class="select-toggle sweep-toggle" data-sweep-toggle aria-pressed="true"
+                title="The radar's turning line, on or off"><i data-icon="radar"></i> Sweep</button>
+        <!-- the label and its steps wrap together -->
+        <div class="lidar-range-group">
+        <span class="lidar-toolbar-label">Range (m)</span>
+        <div class="range-switch" role="group" aria-label="LiDAR plot range" data-range-for="overview">
+          <button type="button" data-lidar-range="auto">Auto</button>
+          <button type="button" data-lidar-range="0.5">0.5</button>
+          <button type="button" data-lidar-range="1">1</button>
+          <button type="button" data-lidar-range="2">2</button>
+          <button type="button" data-lidar-range="4">4</button>
+          <button type="button" data-lidar-range="8">8</button>
+          <button type="button" data-lidar-range="15">15</button>
+        </div>
+        </div>
+      </div>
+
+      <!-- BEAM SELECT: which ranges[] indices a test should read. One
+           panel, moved into the full screen viewer while that shows the
+           LiDAR (lidar-select.js). -->
+      <div id="beamSelectHome">
+        <div class="beam-select" id="beamSelect" hidden>
+
+          <div class="beam-select-controls">
+            <div class="range-switch" role="group" aria-label="Preset beam ranges">
+              <button type="button" id="presetAbsBtn" title="A narrow cone straight ahead">ABS (front)</button>
+              <button type="button" id="presetLeftBtn" title="A narrow cone to the left">Left wall</button>
+              <button type="button" id="presetRightBtn" title="A narrow cone to the right">Right wall</button>
+            </div>
+            <button class="check-btn" id="presetClearBtn" type="button">Clear</button>
+          </div>
+
+          <div class="beam-select-controls">
+            <label>Start index <input id="rangeStart" type="number" min="0" step="1"></label>
+            <label>End index <input id="rangeEnd" type="number" min="0" step="1"></label>
+            <button class="check-btn" id="rangeApplyBtn" type="button">Apply</button>
+          </div>
+
+          <div class="beam-hint" id="beamHint"></div>
+
+          <div class="beam-readout" id="beamReadout" hidden>
+            <div>
+              <span class="k">Indexes in ranges[]</span>
+              <span class="v" id="selIdxRange"></span>
+              <span class="n" id="selCount"></span>
+            </div>
+            <div>
+              <span class="k">Angles</span>
+              <span class="v" id="selAngleRange"></span>
+              <span class="n" id="selAngleWidth"></span>
+            </div>
+            <div>
+              <span class="k">Nearest</span>
+              <span class="v" id="selMin"></span>
+            </div>
+            <div>
+              <span class="k">Farthest</span>
+              <span class="v" id="selMax"></span>
+            </div>
+            <div>
+              <span class="k">Average</span>
+              <span class="v" id="selAvg"></span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="stream-box radar-box">
+        <canvas id="radarCanvas" width="480" height="480"></canvas>
+        <button class="radar-center" id="radarCenterBtn" type="button" disabled
+                title="Put the car back in the middle (keeps the zoom)"><i data-icon="locate"></i> Center</button>
+      </div>
+
+      <div class="lidar-legend" data-view="lines" aria-label="Colour key">
+        <span class="only-detailed"><i class="sw sw-hit"></i>A LiDAR return</span>
+        <span class="only-detailed"><i class="sw sw-obj-warn"></i>Obstacle under 1 m</span>
+        <span class="only-detailed"><i class="sw sw-obj-danger"></i>Obstacle under 0.3 m</span>
+        <span class="only-detailed"><i class="sw sw-blindarea"></i>Rear blind area</span>
+        <span class="only-lines"><i class="sw sw-line"></i>Green line: outline of everything the LiDAR sees</span>
+        <span class="only-lines"><i class="sw sw-ring-near"></i>Red circle: very close (0.5 m)</span>
+        <span class="only-lines"><i class="sw sw-ring-close"></i>Amber circle: close (1 m)</span>
+        <span class="only-lines"><i class="sw sw-car"></i>The car</span>
+      </div>
+
+
+      <!-- DETAILED VIEW (radar.js): what is close, in words -->
+      <div class="radar-panel">
+        <div class="radar-banner none" id="radarBanner" role="status">WAITING FOR /scan</div>
+
+        <div class="radar-sub">Closest in each direction</div>
+        <ul class="radar-sectors" id="radarSectors"></ul>
+
+        <div class="radar-sub">Nearest objects</div>
+        <ol class="radar-objects" id="radarObjects"></ol>
+
+        <div class="radar-foot">
+          <span>Scan rate <b id="radarRate">—</b></span>
+          <span class="radar-legend-note">Danger &lt; 0.30 m · Warn &lt; 1.00 m</span>
+        </div>
+
+        <label class="radar-mask">
+          <span>Ignore angles (your own robot), degrees, + is left</span>
+          <input type="text" id="radarMask" spellcheck="false" placeholder="e.g. 120:135, -135:-120">
+        </label>
+      </div>
+
+      <!-- LINES VIEW: closest return in each direction, with the trend over ~1 s -->
+      <div class="sector-grid">
+        <div class="sector">
+          <span class="sector-k">Ahead</span>
+          <span class="sector-v" id="lidarSectorFront">—</span>
+          <span class="sector-trend" id="lidarTrendFront"></span>
+        </div>
+        <div class="sector">
+          <span class="sector-k">Left</span>
+          <span class="sector-v" id="lidarSectorLeft">—</span>
+          <span class="sector-trend" id="lidarTrendLeft"></span>
+        </div>
+        <div class="sector">
+          <span class="sector-k">Right</span>
+          <span class="sector-v" id="lidarSectorRight">—</span>
+          <span class="sector-trend" id="lidarTrendRight"></span>
+        </div>
+        <div class="sector">
+          <span class="sector-k">Closest</span>
+          <span class="sector-v" id="lidarSectorNearest">—</span>
+          <span class="sector-trend" id="lidarTrendNearest"></span>
+        </div>
+      </div>
+
+      <details class="lidar-tech">
+        <summary>How to read this map · technical details</summary>
+      <div class="lidar-howto in-fold">
+        The car is in the middle, facing up — this is a top-down map of
+        what is around it. Drag to look around, scroll to zoom,
+        double-click to reset. Point at the outline or a dot to see its
+        index and distance.
+      </div>
+        <div class="card-hint" id="lidarHint">
+          Live from <span class="mono">/scan</span>.
+        </div>
+      </details>
+
+    </div>
+
+  </section>
+
+  </div>
+
+  <!-- ==========================================================
+       DRIVE — virtual controller. Publishes to /drive (the mux's
+       navigation input) only while armed AND held; the physical
+       joystick keeps priority and always wins.
+  =========================================================== -->
+  <div class="tab-panel" id="panelDrive" role="tabpanel" hidden>
+
+    <div class="drive-warning" id="driveWarning">
+      <strong>This drives the real car.</strong>
+      Clear the area or put it on a stand. It moves only while you hold
+      the pad or a key, and stops when you let go or switch tabs. If
+      Wi-Fi drops mid-drive it can keep rolling for about a second. The
+      physical controller always overrides this page.
+    </div>
+
+    <!-- The Drive tab IS the full screen view, embedded in the page:
+         the same panes, layouts, floating controls and warnings. Its
+         Full screen button makes it cover the whole screen (cockpit.js
+         moves #cockpit between here and the full screen). -->
+    <div class="drive-cockpit-slot" id="driveCockpitSlot"></div>
+
+    <!-- The driving logic's own controls (drive.js): arming, the pad,
+         limits, who's driving, vitals. Kept, hidden, as the one place
+         that state lives; the view above mirrors and forwards to them,
+         so every drive rule stays in one file. -->
+    <section class="drive-grid drive-source" id="driveGrid" data-cam="small" hidden>
+
+      <div class="drive-col drive-left">
+
+        <!-- CONTROLS -->
+        <div class="live-card drive-card">
+          <h2><span>Controls</span></h2>
+
+          <div class="arm-row">
+            <label class="arm-check">
+              <input type="checkbox" id="driveConfirm">
+              Area is clear / wheels are off the ground
+            </label>
+
+            <button class="arm-btn" id="armBtn" disabled>Arm</button>
+          </div>
+
+          <div class="card-hint" id="driveNote"></div>
+
+          <div class="pad-wrap">
+            <div class="drive-pad" id="drivePad" aria-label="Drive pad: drag to drive">
+              <div class="pad-axis pad-axis-x"></div>
+              <div class="pad-axis pad-axis-y"></div>
+              <span class="pad-label pad-up">FORWARD</span>
+              <span class="pad-label pad-down">REVERSE</span>
+              <span class="pad-label pad-left">LEFT</span>
+              <span class="pad-label pad-right">RIGHT</span>
+              <div class="pad-knob" id="padKnob"></div>
+            </div>
+
+            <div class="pad-side">
+              <button class="stop-btn" id="stopBtn" title="Stop and disarm (Space / Esc)">
+                STOP
+              </button>
+
+              <!-- only while a controller is connected; PS button reconnects it -->
+              <div class="pad-disconnect" id="padDisconnectRow" hidden>
+                <button class="pad-disconnect-btn" id="padDisconnectBtn" type="button"><i data-icon="gamepad"></i> Disconnect<span class="fold-word"> controller</span></button>
+                <span class="pad-disconnect-note" id="padDisconnectNote" role="status"></span>
+              </div>
+
+              <div class="card-hint">
+                Drag the knob, or hold
+                <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows.
+                <kbd>Space</kbd> or <kbd>Esc</kbd> stops.
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LIMITS — set before you drive, so they sit with the controls -->
+        <div class="side-card square limits-card">
+          <h2 class="split-head">
+            <span>Limits</span>
+            <span class="limit-badges">
+              <span class="speed-mode" id="speedMode" hidden>HIGH SPEED</span>
+              <span class="speed-mode" id="steerMode" hidden>FULL STEERING</span>
+            </span>
+          </h2>
+
+          <label class="slider-row">
+            <span>Max speed</span>
+            <input type="range" id="maxSpeed" min="0.3" max="3" step="0.1" value="3">
+            <strong id="maxSpeedValue">3.0 m/s</strong>
+          </label>
+
+          <label class="slider-row">
+            <span>Max steering</span>
+            <input type="range" id="maxSteer" min="0.05" max="0.34" step="0.01" value="0.34">
+            <strong id="maxSteerValue">19°</strong>
+          </label>
+
+          <button class="top-btn warn-btn" id="speedUnlockBtn" type="button">
+            <i data-icon="alert"></i> Unlock high speed
+          </button>
+
+          <button class="top-btn warn-btn" id="steerUnlockBtn" type="button">
+            <i data-icon="alert"></i> Unlock full steering (up to 23°)
+          </button>
+
+          <div class="card-hint">
+            Normal limits are <span data-mps="3">3 m/s</span> and 19°.
+            <span class="info-tip" tabindex="0"
+                  title="Publishes ackermann_msgs/AckermannDriveStamped on /drive at 20 Hz"><i data-icon="info"></i></span>
+          </div>
+        </div>
+
+      </div>
+
+      <div class="drive-col drive-center">
+
+        <!-- CAMERA with a heads-up overlay -->
+        <div class="live-card drive-view">
+          <h2>
+            <span>Camera</span>
+            <span class="cam-tools">
+              <button class="link-btn" type="button" data-cockpit-open="camera"
+                      title="Camera full screen, with battery and speed on top"><i data-icon="maximize"></i> Full screen</button>
+              <button class="link-btn" type="button" data-cockpit-open="watch"
+                      title="Camera and LiDAR side by side, full screen"><i data-icon="split"></i> Split</button>
+              <button class="link-btn" id="driveCamConnect" type="button"
+                      title="Reconnect the camera stream"><i data-icon="refresh"></i> Reconnect</button>
+              <span class="size-switch" role="group" aria-label="Camera size">
+                <button type="button" data-cam-size="small">Small</button>
+                <button type="button" data-cam-size="large">Large</button>
+              </span>
+            </span>
+          </h2>
+
+          <div class="drive-cam">
+            <div id="driveCamSlot"></div>
+
+            <div class="hud hud-top">
+              <span class="drive-state" id="driveState">DISARMED</span>
+              <span class="hud-chip hud-fast" id="hudSpeedMode" hidden><i data-icon="alert"></i> HIGH SPEED</span>
+              <span class="hud-chip hud-fast" id="hudSteerMode" hidden><i data-icon="alert"></i> FULL STEERING</span>
+              <span class="hud-chip" id="hudBattery"><i data-icon="battery"></i> --.- V</span>
+            </div>
+
+            <div class="hud hud-bottom">
+              <div>
+                <span class="hud-k">Command</span>
+                <span class="hud-v" id="cmdSpeed">0.00 m/s</span>
+              </div>
+
+              <div class="hud-steer">
+                <span class="hud-k">Steering <span id="cmdSteer">0°</span></span>
+                <div class="steer-bar"><i id="steerMark"></i></div>
+              </div>
+
+              <div>
+                <span class="hud-k">Measured</span>
+                <span class="hud-v" id="measSpeed">—</span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="side-card square surround-card">
+          <h2 class="split-head">
+            <span>Surroundings</span>
+            <span class="cam-tools">
+              <div class="range-switch view-switch" role="group" aria-label="LiDAR view">
+                <button type="button" data-lidar-view="lines" title="The original radar: green outline and distance circles">Lines</button>
+                <button type="button" data-lidar-view="detailed" title="Coloured dots, open space and a movement trail">Detailed</button>
+              </div>
+              <button class="top-btn small-btn" id="lidarBigBtn" type="button"
+                      title="Swap the LiDAR into the big view"><i data-icon="maximize"></i> Enlarge</button>
+            </span>
+          </h2>
+
+          <div class="lidar-status tone-none" id="driveLidarStatus">
+            <strong>No LiDAR data yet.</strong> Waiting for the sensor.
+          </div>
+
+          <div class="stream-box radar-box drive-radar">
+            <canvas id="driveRadar" width="360" height="360"></canvas>
+
+            <div class="radar-zoom" role="group" aria-label="Zoom">
+              <button type="button" id="driveZoomIn" title="Zoom in">+</button>
+              <span id="driveZoomLabel">4 m</span>
+              <button type="button" id="driveZoomOut" title="Zoom out">−</button>
+              <button type="button" id="driveZoomAuto" title="Automatic range">Auto</button>
+            </div>
+
+            <button class="radar-center" id="driveCenterBtn" type="button" disabled
+                title="Put the car back in the middle (keeps the zoom)"><i data-icon="locate"></i> Center</button>
+          </div>
+
+          <div class="lidar-legend" data-view="lines" aria-label="Colour key">
+            <span class="only-detailed"><i class="sw sw-hit"></i>A LiDAR return</span>
+            <span class="only-detailed"><i class="sw sw-obj-warn"></i>Obstacle under 1 m</span>
+            <span class="only-detailed"><i class="sw sw-obj-danger"></i>Obstacle under 0.3 m</span>
+            <span class="only-detailed"><i class="sw sw-blindarea"></i>Rear blind area</span>
+        <span class="only-lines"><i class="sw sw-line"></i>Green line: outline of everything the LiDAR sees</span>
+        <span class="only-lines"><i class="sw sw-ring-near"></i>Red circle: very close (0.5 m)</span>
+        <span class="only-lines"><i class="sw sw-ring-close"></i>Amber circle: close (1 m)</span>
+        <span class="only-lines"><i class="sw sw-car"></i>The car</span>
+          </div>
+
+          <!-- closest return in each direction, with the trend over ~1 s -->
+          <div class="sector-grid">
+            <div class="sector">
+              <span class="sector-k">Ahead</span>
+              <span class="sector-v" id="driveSectorFront">—</span>
+              <span class="sector-trend" id="driveTrendFront"></span>
+            </div>
+            <div class="sector">
+              <span class="sector-k">Left</span>
+              <span class="sector-v" id="driveSectorLeft">—</span>
+              <span class="sector-trend" id="driveTrendLeft"></span>
+            </div>
+            <div class="sector">
+              <span class="sector-k">Right</span>
+              <span class="sector-v" id="driveSectorRight">—</span>
+              <span class="sector-trend" id="driveTrendRight"></span>
+            </div>
+            <div class="sector">
+              <span class="sector-k">Closest</span>
+              <span class="sector-v" id="driveSectorNearest">—</span>
+              <span class="sector-trend" id="driveTrendNearest"></span>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+      <div class="drive-col drive-right">
+
+        <!-- WHO'S DRIVING — every source that could move the car -->
+        <div class="side-card square who-card">
+          <h2>Who's driving</h2>
+
+          <!-- the one answer, big -->
+          <div class="control-hero tone-none" id="controlHero">
+            <span class="control-icon" id="controlIcon" aria-hidden="true"><i data-icon="pause"></i></span>
+            <div>
+              <div class="control-title" id="controlTitle">Not connected</div>
+              <div class="control-sub" id="controlSub">Connect to the robot in the top bar.</div>
+            </div>
+          </div>
+
+          <!-- the backup stop, always worth knowing -->
+          <div class="control-chips" id="controlChips"></div>
+
+          <!-- only when something needs attention -->
+          <ul class="control-alerts" id="controlAlerts"></ul>
+        </div>
+
+        <!-- VITALS — what you need to keep an eye on while driving -->
+        <div class="side-card square vitals-card">
+          <h2 class="split-head">
+            <span>Vitals</span>
+            <span class="h3-note" id="vitalsSummary"></span>
+          </h2>
+
+          <ul class="vitals" id="vitals"></ul>
+        </div>
+
+
+
+      </div>
+
+    </section>
+
+  </div>
+
+  <!-- HIGH-SPEED UNLOCK — what 5 m/s actually means, before it is allowed -->
+  <dialog class="speed-dialog" id="speedDialog" aria-labelledby="speedDialogTitle">
+
+    <h2 id="speedDialogTitle"><i data-icon="alert"></i> Unlock high speed?</h2>
+
+    <p>
+      This raises the speed limit from <strong data-mps="3">3 m/s</strong> to
+      <strong data-mps="5">5 m/s</strong> (about 18 km/h, 11 mph). At that speed:
+    </p>
+
+    <ul>
+      <li>The car covers <strong>5 metres every second</strong> — across most rooms in two.</li>
+      <li>Your reaction time adds roughly <strong>1.5 m</strong> before you even press STOP.</li>
+      <li>If Wi-Fi drops, the car keeps its last speed until the motor
+        controller times out (about 1 s, not yet measured) — up to
+        <strong>5 m with nobody in control</strong>.</li>
+      <li>The car's motor controller (VESC) may cap speed lower than <span data-mps="5">5 m/s</span>.
+        This page cannot go past that limit.</li>
+    </ul>
+
+    <label class="speed-ack">
+      <input type="checkbox" id="speedAck1">
+      There is a large clear area and nobody is in the car's path.
+    </label>
+
+    <label class="speed-ack">
+      <input type="checkbox" id="speedAck2">
+      Someone is holding the physical controller as a backup stop.
+    </label>
+
+    <p class="speed-note">
+      High speed switches off again when you leave the Drive tab or reload the page.
+    </p>
+
+    <div class="speed-actions">
+      <button class="top-btn" id="speedCancel" type="button">Cancel</button>
+      <button class="top-btn warn-btn" id="speedConfirm" type="button" disabled>
+        Unlock up to <span data-mps="5">5 m/s</span>
+      </button>
+    </div>
+
+  </dialog>
+
+  <!-- FULL STEERING UNLOCK -->
+  <dialog class="speed-dialog" id="steerDialog" aria-labelledby="steerDialogTitle">
+
+    <h2 id="steerDialogTitle"><i data-icon="alert"></i> Unlock full steering?</h2>
+
+    <p>
+      This raises the steering limit from <strong>19°</strong> (the normal
+      controller limit) to <strong>23°</strong>, the most the car allows.
+    </p>
+
+    <ul>
+      <li>A full turn at speed can <strong>tip the car over</strong> or spin it out.
+        Slow down before turning hard.</li>
+      <li>Combined with high speed this is the easiest way to crash.</li>
+      <li>The servo can be pushed against its end stops, which wears it.</li>
+      <li>The motor controller (VESC) may limit steering further. This page
+        cannot go past that limit.</li>
+    </ul>
+
+    <label class="speed-ack">
+      <input type="checkbox" id="steerAck1">
+      The floor is flat and there is open space around the car.
+    </label>
+
+    <label class="speed-ack">
+      <input type="checkbox" id="steerAck2">
+      I will slow down before turning hard.
+    </label>
+
+    <p class="speed-note">
+      Full steering switches off again when you leave the Drive tab or reload the page.
+    </p>
+
+    <div class="speed-actions">
+      <button class="top-btn" id="steerCancel" type="button">Cancel</button>
+      <button class="top-btn warn-btn" id="steerConfirm" type="button" disabled>
+        Unlock up to 23°
+      </button>
+    </div>
+
+  </dialog>
+
+  <!-- ==========================================================
+       ADVANCED — start with what needs attention, then the detail
+  =========================================================== -->
+  <div class="tab-panel" id="panelAdvanced" role="tabpanel" hidden>
+
+    <section class="attention" id="attention">
+      <h2>Needs attention</h2>
+      <ul class="attention-list" id="attentionList"></ul>
+    </section>
+
+    <nav class="jump-nav" aria-label="Advanced sections">
+      <a href="#secSystem">Robot System</a>
+      <a href="#secNodes">Nodes</a>
+      <a href="#secRosDiag">ROS Diagnostics</a>
+      <a href="#secTopics">Topics</a>
+      <a href="#secChecks">Checks</a>
+      <a href="#secLog">Warnings log</a>
+    </nav>
+
+    <div class="advanced-grid">
+
+      <!-- Every OS-level probe, with every reading it reported —
+           the detail behind the Overview's CPU/RAM/GPU/temp tiles. -->
+      <div class="advanced-card span-2" id="secSystem">
+        <h3>
+          <span>Robot System</span>
+          <span class="h3-note" id="sysSummary">not reporting</span>
+        </h3>
+
+        <div class="card-intro">
+          Operating-system checks from <span class="mono">system_diagnostics.py</span>.
+          Problems are listed first; every raw reading is shown under each check.
+        </div>
+
+        <ul class="sys-list" id="sysList"></ul>
+
+        <div class="card-hint card-body" id="sysHint" style="margin:0">
+          Waiting for system_diagnostics — bringup starts it; restart bringup on the robot with
+          <span class="mono">ros2 launch f1tenth_stack bringup_launch.py</span>
+        </div>
+      </div>
+
+      <div class="advanced-card" id="secNodes">
+        <h3>
+          <span>Nodes</span>
+          <span class="h3-note" id="nodeSummary"></span>
+        </h3>
+
+        <div class="card-intro">
+          The nodes bringup should start, and anything else running.
+        </div>
+
+        <div class="scroll">
+          <table class="raw-table">
+            <thead>
+              <tr>
+                <th>Expected Node</th>
+                <th>Status</th>
+              </tr>
+            </thead>
+
+            <tbody id="nodeRows"></tbody>
+          </table>
+
+          <div class="node-chips" id="extraNodes"></div>
+        </div>
+      </div>
+
+      <div class="advanced-card" id="secRosDiag">
+        <h3>ROS Diagnostics</h3>
+
+        <div class="card-intro">
+          What ROS nodes themselves report on <span class="mono">/diagnostics</span>.
+        </div>
+
+        <div class="scroll" data-empty="Nothing reported on /diagnostics yet.">
+          <table class="raw-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Level</th>
+                <th>Message</th>
+              </tr>
+            </thead>
+
+            <tbody id="rosDiagRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="advanced-card span-2" id="secTopics">
+        <h3>
+          <span>Topics</span>
+          <span class="h3-note" id="topicSummary">click a row for live data</span>
+        </h3>
+
+        <div class="table-tools">
+          <input type="search" id="topicFilter" placeholder="Filter topics…"
+                 aria-label="Filter topics">
+          <label>
+            <input type="checkbox" id="topicProblems"> problems only
+          </label>
+        </div>
+
+        <div class="scroll" data-empty="No topics yet — they appear once the robot is connected.">
+          <table class="raw-table">
+            <thead>
+              <tr>
+                <th>Topic</th>
+                <th>Status</th>
+                <th>Pubs</th>
+                <th>Msgs</th>
+                <th>Age</th>
+              </tr>
+            </thead>
+
+            <tbody id="topicRows"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="advanced-card" id="secChecks">
+        <h3>On-Demand Checks</h3>
+
+        <div class="card-body">
+          <div class="check-row">
+            <button class="check-btn" id="joyBtn">
+              Run joystick check
+            </button>
+
+            <span class="check-note">
+              Controller not working? This runs joy_enumerate_devices on
+              the robot — it tells “no controller” apart from “ROS cannot
+              open it”.
+            </span>
+          </div>
+
+          <pre id="joyResult"></pre>
+
+          <div class="check-row">
+            <button class="check-btn restart-btn" id="restartBtn" type="button" data-restart>
+              Restart the dashboard on the car
+            </button>
+
+            <span class="check-note">
+              Page lagging or stopped updating? This stops and starts again every
+              node on the car: bringup, rosbridge, the camera and this page's server.
+              About a minute. The car must be stopped. (By hand on the car: Ctrl+C on
+              bringup, then start it again.)
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <div class="advanced-card" id="secLog">
+        <h3>
+          <span>ROS Warnings / Errors</span>
+          <span class="h3-note">from /rosout, newest at the bottom</span>
+        </h3>
+
+        <div class="log" id="log">
+          <div class="log-entry">
+            No warnings or errors received yet.
+          </div>
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+
+
+  <!-- ==========================================================
+       CONTROLLER - the PS4 controller, live from /joy: what is
+       pressed lights up (js/controller.js)
+  =========================================================== -->
+  <div class="tab-panel" id="panelController" role="tabpanel" hidden>
+
+    <div class="jp-grid">
+
+      <section class="advanced-card jp-card">
+        <h3>
+          <span class="jp-title"><span id="jpTitle">PS4 controller</span>
+            <span class="jp-battery" id="jpBattery" hidden></span></span>
+          <span class="h3-note" id="jpStatus">waiting for /joy</span>
+        </h3>
+
+        <!-- which controller: the car's PS4 (/joy), or one on this device
+             through the browser (a Steam Deck), which can also drive -->
+        <div class="jp-source">
+          <div class="range-switch" role="group" aria-label="Controller">
+            <button type="button" data-jp-device="ps4">PS4 on the car</button>
+            <button type="button" data-jp-device="deck">Steam Deck (this browser)</button>
+          </div>
+        </div>
+
+        <div class="jp-stage" id="jpStage" data-live="false">
+          <!-- shared shading for both drawings. Not display:none: a gradient
+               inside a hidden <svg> does not paint anywhere. -->
+          <svg class="jp-defs" width="0" height="0" aria-hidden="true" focusable="false">
+            <defs>
+              <linearGradient id="jpBodyGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style="stop-color: var(--jp-body-top)"/>
+                <stop offset="0.55" style="stop-color: var(--jp-body)"/>
+                <stop offset="1" style="stop-color: var(--jp-body-low)"/>
+              </linearGradient>
+              <radialGradient id="jpDome" cx="0.38" cy="0.3" r="0.8">
+                <stop offset="0" style="stop-color: var(--jp-key-hi)"/>
+                <stop offset="1" style="stop-color: var(--jp-key)"/>
+              </radialGradient>
+              <radialGradient id="jpWellGrad" cx="0.5" cy="0.55" r="0.6">
+                <stop offset="0" style="stop-color: var(--jp-well-in)"/>
+                <stop offset="1" style="stop-color: var(--jp-well)"/>
+              </radialGradient>
+              <radialGradient id="jpCapGrad" cx="0.42" cy="0.36" r="0.75">
+                <stop offset="0" style="stop-color: var(--jp-cap-hi)"/>
+                <stop offset="0.7" style="stop-color: var(--jp-cap)"/>
+                <stop offset="1" style="stop-color: var(--jp-cap-low)"/>
+              </radialGradient>
+              <linearGradient id="jpPadGrad" x1="0" y1="0" x2="0" y2="1">
+                <stop offset="0" style="stop-color: var(--jp-touch-top)"/>
+                <stop offset="1" style="stop-color: var(--jp-touch)"/>
+              </linearGradient>
+              <linearGradient id="jpScreenGrad" x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stop-color="#1b2028"/>
+                <stop offset="0.5" stop-color="#0b0d10"/>
+                <stop offset="1" stop-color="#141820"/>
+              </linearGradient>
+              <linearGradient id="jpFillGrad" x1="0" y1="1" x2="0" y2="0">
+                <stop offset="0" stop-color="#ff5a00"/>
+                <stop offset="1" stop-color="#ffb347"/>
+              </linearGradient>
+              <filter id="jpShadow" x="-10%" y="-10%" width="120%" height="135%">
+                <feDropShadow dx="0" dy="14" stdDeviation="14" flood-color="#000" flood-opacity="0.35"/>
+              </filter>
+              <filter id="jpGlow" x="-60%" y="-60%" width="220%" height="220%">
+                <feGaussianBlur stdDeviation="7" result="b"/>
+                <feMerge><feMergeNode in="b"/><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge>
+              </filter>
+              <filter id="jpBarGlow" x="-20%" y="-300%" width="140%" height="700%">
+                <feGaussianBlur stdDeviation="5"/>
+              </filter>
+            </defs>
+          </svg>
+
+          <!-- PS4 controller (DualShock 4), front view -->
+          <svg class="jp-svg" id="jpSvg" viewBox="0 0 840 540" role="img"
+               aria-label="PS4 controller: pressed buttons light up">
+
+            <!-- triggers (L2 / R2): fill from the bottom as they are squeezed -->
+            <g data-ctl="l2" class="jp-trigger">
+              <path class="jp-key" d="M156 74 C156 44 176 26 216 24 C256 26 276 44 276 74 Z"/>
+              <clipPath id="jpClipL2"><path d="M156 74 C156 44 176 26 216 24 C256 26 276 44 276 74 Z"/></clipPath>
+              <rect class="jp-fill" id="jpFillL2" x="150" y="74" width="132" height="0" clip-path="url(#jpClipL2)"/>
+              <text class="jp-label" x="216" y="60">L2</text>
+            </g>
+            <g data-ctl="r2" class="jp-trigger">
+              <path class="jp-key" d="M564 74 C564 44 584 26 624 24 C664 26 684 44 684 74 Z"/>
+              <clipPath id="jpClipR2"><path d="M564 74 C564 44 584 26 624 24 C664 26 684 44 684 74 Z"/></clipPath>
+              <rect class="jp-fill" id="jpFillR2" x="558" y="74" width="132" height="0" clip-path="url(#jpClipR2)"/>
+              <text class="jp-label" x="624" y="60">R2</text>
+            </g>
+
+            <!-- bumpers (L1 / R1): the deadman buttons -->
+            <g data-ctl="l1"><path class="jp-key" d="M132 100 C140 86 160 80 214 79 C262 80 286 84 292 96 L292 102 L132 106 Z"/>
+              <text class="jp-label jp-small" x="212" y="98">L1</text></g>
+            <g data-ctl="r1"><path class="jp-key" d="M708 100 C700 86 680 80 626 79 C578 80 554 84 548 96 L548 102 L708 106 Z"/>
+              <text class="jp-label jp-small" x="628" y="98">R1</text></g>
+
+            <!-- the body, with a soft shadow, and the grips' seam -->
+            <path class="jp-body" filter="url(#jpShadow)" d="M420 104 C360 104 250 100 196 102 C150 104 116 116 96 144
+              C70 180 56 238 44 308 C32 380 28 438 50 478 C70 514 124 520 150 490 C172 464 190 428 214 396
+              C238 366 280 350 330 348 C370 346 400 348 420 348 C440 348 470 346 510 348 C560 350 602 366 626 396
+              C650 428 668 464 690 490 C716 520 770 514 790 478 C812 438 808 380 796 308 C784 238 770 180 744 144
+              C724 116 690 104 644 102 C590 100 480 104 420 104 Z"/>
+            <path class="jp-sheen" d="M110 150 C150 118 250 112 420 112 C590 112 690 118 730 150"/>
+            <path class="jp-grip" d="M88 330 C78 390 74 440 96 470 M752 330 C762 390 766 440 744 470"/>
+
+            <!-- touchpad, and the light bar along its top edge -->
+            <g data-ctl="touchpad"><rect class="jp-key jp-touch" x="298" y="110" width="244" height="120" rx="16"/>
+              <path class="jp-touch-lines" d="M330 210 h180"/></g>
+            <rect class="jp-lightbar-glow" x="318" y="104" width="204" height="6" rx="3" filter="url(#jpBarGlow)"/>
+            <rect class="jp-lightbar" x="318" y="104" width="204" height="5" rx="2.5"/>
+
+            <!-- Share / Options -->
+            <g data-ctl="share"><rect class="jp-key" x="258" y="126" width="20" height="38" rx="10"/>
+              <text class="jp-label jp-tiny" x="268" y="182">SHARE</text></g>
+            <g data-ctl="options"><rect class="jp-key" x="562" y="126" width="20" height="38" rx="10"/>
+              <text class="jp-label jp-tiny" x="572" y="182">OPTIONS</text></g>
+
+            <!-- D-pad: four arrow keys round a hub -->
+            <circle class="jp-hub" cx="178" cy="216" r="56"/>
+            <g class="jp-dpad">
+              <g data-ctl="up"><path class="jp-key" d="M163 166 h30 v30 l-15 15 l-15 -15 Z"/><path class="jp-arrow" d="M178 177 l-6 9 h12 Z"/></g>
+              <g data-ctl="down"><path class="jp-key" d="M163 266 h30 v-30 l-15 -15 l-15 15 Z"/><path class="jp-arrow" d="M178 255 l-6 -9 h12 Z"/></g>
+              <g data-ctl="left"><path class="jp-key" d="M128 201 v30 h30 l15 -15 l-15 -15 Z"/><path class="jp-arrow" d="M139 216 l9 -6 v12 Z"/></g>
+              <g data-ctl="right"><path class="jp-key" d="M228 201 v30 h-30 l-15 -15 l15 -15 Z"/><path class="jp-arrow" d="M217 216 l-9 -6 v12 Z"/></g>
+            </g>
+
+            <!-- face buttons, each glowing in its own colour when pressed -->
+            <circle class="jp-hub" cx="662" cy="216" r="64"/>
+            <g data-ctl="triangle"><circle class="jp-key jp-face" cx="662" cy="170" r="22"/>
+              <path class="jp-sym sym-triangle" d="M662 159 l10 17 h-20 Z"/></g>
+            <g data-ctl="circle"><circle class="jp-key jp-face" cx="708" cy="216" r="22"/>
+              <circle class="jp-sym sym-circle" cx="708" cy="216" r="9"/></g>
+            <g data-ctl="cross"><circle class="jp-key jp-face" cx="662" cy="262" r="22"/>
+              <path class="jp-sym sym-cross" d="M654 254 l16 16 M670 254 l-16 16"/></g>
+            <g data-ctl="square"><circle class="jp-key jp-face" cx="616" cy="216" r="22"/>
+              <rect class="jp-sym sym-square" x="608" y="208" width="16" height="16"/></g>
+
+            <!-- speaker grille -->
+            <g class="jp-grille">
+              <circle cx="404" cy="262" r="2.2"/><circle cx="414" cy="262" r="2.2"/><circle cx="424" cy="262" r="2.2"/><circle cx="434" cy="262" r="2.2"/>
+              <circle cx="409" cy="271" r="2.2"/><circle cx="419" cy="271" r="2.2"/><circle cx="429" cy="271" r="2.2"/>
+            </g>
+
+            <!-- sticks: the cap follows the axes; pressing it is L3 / R3 -->
+            <circle class="jp-well" cx="310" cy="306" r="52"/>
+            <g data-ctl="l3" class="jp-stick-g">
+              <circle class="jp-key jp-stick" id="jpStickL" cx="310" cy="306" r="34"/>
+              <circle class="jp-cap-ring" id="jpStickLRing" cx="310" cy="306" r="20"/>
+            </g>
+            <circle class="jp-well" cx="530" cy="306" r="52"/>
+            <g data-ctl="r3" class="jp-stick-g">
+              <circle class="jp-key jp-stick" id="jpStickR" cx="530" cy="306" r="34"/>
+              <circle class="jp-cap-ring" id="jpStickRRing" cx="530" cy="306" r="20"/>
+            </g>
+
+            <!-- PS button -->
+            <g data-ctl="ps"><circle class="jp-key jp-face" cx="420" cy="314" r="17"/>
+              <text class="jp-label jp-tiny" x="420" y="318">PS</text></g>
+          </svg>
+
+          <!-- Steam Deck, read through the browser's Gamepad API -->
+          <svg class="jp-svg" id="jpDeckSvg" viewBox="0 0 1000 460" role="img" hidden
+               aria-label="Steam Deck: pressed buttons light up">
+            <g data-ctl="l2" class="jp-trigger">
+              <path class="jp-key" d="M84 56 C84 28 112 12 156 12 C200 12 228 28 228 56 Z"/>
+              <clipPath id="jpDeckClipL2"><path d="M84 56 C84 28 112 12 156 12 C200 12 228 28 228 56 Z"/></clipPath>
+              <rect class="jp-fill" id="jpDeckFillL2" x="80" y="56" width="152" height="0" clip-path="url(#jpDeckClipL2)"/>
+              <text class="jp-label" x="156" y="44">L2</text>
+            </g>
+            <g data-ctl="r2" class="jp-trigger">
+              <path class="jp-key" d="M772 56 C772 28 800 12 844 12 C888 12 916 28 916 56 Z"/>
+              <clipPath id="jpDeckClipR2"><path d="M772 56 C772 28 800 12 844 12 C888 12 916 28 916 56 Z"/></clipPath>
+              <rect class="jp-fill" id="jpDeckFillR2" x="768" y="56" width="152" height="0" clip-path="url(#jpDeckClipR2)"/>
+              <text class="jp-label" x="844" y="44">R2</text>
+            </g>
+            <g data-ctl="l1"><rect class="jp-key" x="66" y="62" width="180" height="22" rx="11"/>
+              <text class="jp-label jp-small" x="156" y="78">L1</text></g>
+            <g data-ctl="r1"><rect class="jp-key" x="754" y="62" width="180" height="22" rx="11"/>
+              <text class="jp-label jp-small" x="844" y="78">R1</text></g>
+
+            <path class="jp-body" filter="url(#jpShadow)" d="M150 88 H850 C930 88 984 140 984 230 C984 330 950 398 880 398
+              C830 398 800 370 760 370 H240 C200 370 170 398 120 398 C50 398 16 330 16 230 C16 140 70 88 150 88 Z"/>
+            <path class="jp-sheen" d="M80 120 C140 100 300 98 500 98 C700 98 860 100 920 120"/>
+            <rect class="jp-screen" x="296" y="108" width="408" height="250" rx="14"/>
+            <path class="jp-screen-gloss" d="M306 118 H560 L470 348 H306 Z"/>
+            <text class="jp-label jp-small jp-faint" x="500" y="240">STEAM DECK</text>
+
+            <!-- left: D-pad, stick, trackpad -->
+            <circle class="jp-hub" cx="95" cy="172" r="48"/>
+            <g class="jp-dpad">
+              <g data-ctl="up"><path class="jp-key" d="M83 130 h24 v26 l-12 12 l-12 -12 Z"/></g>
+              <g data-ctl="down"><path class="jp-key" d="M83 214 h24 v-26 l-12 -12 l-12 12 Z"/></g>
+              <g data-ctl="left"><path class="jp-key" d="M53 160 v24 h26 l12 -12 l-12 -12 Z"/></g>
+              <g data-ctl="right"><path class="jp-key" d="M137 160 v24 h-26 l-12 -12 l12 -12 Z"/></g>
+            </g>
+            <circle class="jp-well" cx="215" cy="170" r="44"/>
+            <g data-ctl="l3" class="jp-stick-g">
+              <circle class="jp-key jp-stick" id="jpDeckStickL" cx="215" cy="170" r="28"/>
+              <circle class="jp-cap-ring" id="jpDeckStickLRing" cx="215" cy="170" r="16"/>
+            </g>
+            <rect class="jp-pad-area" x="128" y="248" width="144" height="108" rx="24"/>
+            <g data-ctl="view"><rect class="jp-key" x="152" y="104" width="30" height="15" rx="7.5"/>
+              <text class="jp-label jp-tiny" x="167" y="134">VIEW</text></g>
+            <g data-ctl="steam"><rect class="jp-key" x="232" y="366" width="56" height="18" rx="9"/>
+              <text class="jp-label jp-tiny" x="260" y="379">STEAM</text></g>
+
+            <!-- right: A B X Y, stick, trackpad -->
+            <circle class="jp-hub" cx="905" cy="172" r="56"/>
+            <g data-ctl="y"><circle class="jp-key jp-face" cx="905" cy="136" r="18"/><text class="jp-label" x="905" y="142">Y</text></g>
+            <g data-ctl="x"><circle class="jp-key jp-face" cx="868" cy="172" r="18"/><text class="jp-label" x="868" y="178">X</text></g>
+            <g data-ctl="b"><circle class="jp-key jp-face" cx="942" cy="172" r="18"/><text class="jp-label" x="942" y="178">B</text></g>
+            <g data-ctl="a"><circle class="jp-key jp-face" cx="905" cy="208" r="18"/><text class="jp-label" x="905" y="214">A</text></g>
+            <circle class="jp-well" cx="785" cy="170" r="44"/>
+            <g data-ctl="r3" class="jp-stick-g">
+              <circle class="jp-key jp-stick" id="jpDeckStickR" cx="785" cy="170" r="28"/>
+              <circle class="jp-cap-ring" id="jpDeckStickRRing" cx="785" cy="170" r="16"/>
+            </g>
+            <rect class="jp-pad-area" x="728" y="248" width="144" height="108" rx="24"/>
+            <g data-ctl="menu"><rect class="jp-key" x="818" y="104" width="30" height="15" rx="7.5"/>
+              <text class="jp-label jp-tiny" x="833" y="134">MENU</text></g>
+            <g data-ctl="quick"><rect class="jp-key" x="712" y="366" width="56" height="18" rx="9"/>
+              <text class="jp-label jp-tiny" x="740" y="379">• • •</text></g>
+
+            <!-- the back grips, drawn below -->
+            <text class="jp-label jp-tiny jp-faint" x="500" y="438">BACK GRIPS</text>
+            <g data-ctl="l4"><rect class="jp-key" x="96" y="414" width="58" height="28" rx="10"/><text class="jp-label jp-small" x="125" y="433">L4</text></g>
+            <g data-ctl="l5"><rect class="jp-key" x="164" y="414" width="58" height="28" rx="10"/><text class="jp-label jp-small" x="193" y="433">L5</text></g>
+            <g data-ctl="r4"><rect class="jp-key" x="778" y="414" width="58" height="28" rx="10"/><text class="jp-label jp-small" x="807" y="433">R4</text></g>
+            <g data-ctl="r5"><rect class="jp-key" x="846" y="414" width="58" height="28" rx="10"/><text class="jp-label jp-small" x="875" y="433">R5</text></g>
+          </svg>
+
+          <div class="jp-idle" id="jpIdle">
+            <strong id="jpIdleTitle">No controller input</strong>
+            <span id="jpIdleText">Nothing is arriving on /joy. Is the PS4 controller on and connected? The Gamepad
+              row on the Advanced tab says what the car sees.</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="advanced-card jp-side">
+        <h3>
+          <span>Pressed now</span>
+          <span class="h3-note" id="jpRate"></span>
+        </h3>
+
+        <ul class="jp-held" id="jpHeld"></ul>
+
+        <div class="jp-deadman" id="jpDeadman"></div>
+
+        <!-- a button switching on and off by itself -->
+        <div class="jp-flicker" id="jpFlicker" role="alert" hidden></div>
+
+        <div class="jp-sub">Sticks and triggers</div>
+        <div class="jp-axes" id="jpAxes"></div>
+
+        <div class="cspeed cspeed-inline" data-cspeed></div>
+
+        <div class="jp-sub" id="jpRawTitle">Raw /joy</div>
+        <div class="jp-raw">
+          <div><span class="jp-raw-k">buttons[ ]</span><span class="jp-raw-v" id="jpRawButtons"></span></div>
+          <div><span class="jp-raw-k">axes[ ]</span><span class="jp-raw-v" id="jpRawAxes"></span></div>
+        </div>
+
+        <div class="jp-sub">Mapping</div>
+        <p class="jp-map-note" id="jpMapNote"></p>
+        <div class="jp-map-actions">
+          <button class="check-btn" id="jpMapBtn" type="button">Map buttons</button>
+          <button class="check-btn" id="jpMapReset" type="button" hidden>Use the default</button>
+        </div>
+
+        <!-- just one control: pick it here, or click it on the drawing -->
+        <div class="jp-map-one" id="jpOneRow">
+          <label for="jpOneSelect">Remap one</label>
+          <select id="jpOneSelect"></select>
+          <button class="check-btn" id="jpOneBtn" type="button">Remap</button>
+          <span class="jp-map-tip">or click it on the drawing</span>
+        </div>
+
+        <!-- the mapping walk-through: press what it asks for -->
+        <div class="jp-wizard" id="jpWizard" hidden>
+          <div class="jp-wizard-step" id="jpWizardStep"></div>
+          <div class="jp-wizard-hint" id="jpWizardHint"></div>
+          <div class="jp-map-actions">
+            <button class="check-btn" id="jpWizardIgnore" type="button" hidden
+                    title="Stop it lighting here and being counted (a button that misbehaves)">Ignore it</button>
+            <button class="check-btn" id="jpWizardSkip" type="button">Skip</button>
+            <button class="check-btn" id="jpWizardCancel" type="button">Cancel</button>
+          </div>
+        </div>
+      </section>
+
+    </div>
+
+  </div>
+</div>
+
+<!-- FOOTER -->
+<footer class="footer">
+
+  <div class="footer-group">
+    <span>
+      Network:
+      <strong id="networkFooter">unknown</strong>
+    </span>
+
+  </div>
+
+  <div class="footer-group">
+    <span>
+      Robot:
+      <strong id="robotLabel">unknown</strong>
+    </span>
+
+    <span>
+      IP:
+      <strong id="robotIp">unknown</strong>
+    </span>
+
+    <button class="cspeed-chip" id="cspeedChip" type="button" data-cspeed-chip
+            aria-expanded="false" aria-controls="cspeedPop" title="Change the PS4 controller's top speed" hidden>
+      <i data-icon="gamepad"></i>
+      <span>PS4 top speed</span>
+      <strong data-cspeed-value>--</strong>
+    </button>
+
+  </div>
+
+</footer>
+
+<!-- FULL SCREEN (cockpit.js): camera, LiDAR and controls panes, any mix,
+     side by side, resized and reordered; ready-made layouts. The controls
+     drive through the same controller as the Drive tab - same arming,
+     dead-man and limits. Phones: one picture at a time, thumb sticks. -->
+<div class="cockpit" id="cockpit" hidden>
+
+  <div class="cockpit-top">
+    <div class="cockpit-status">
+      <span class="drive-state" id="cockpitState">DISARMED</span>
+      <span class="viewer-health" id="cockpitHealth" data-health="unknown">UNKNOWN</span>
+      <span class="hud-chip" id="cockpitBattery"><i data-icon="battery"></i> --.- V</span>
+      <span class="hud-chip hud-fast" id="cockpitSpeedMode" hidden><i data-icon="alert"></i> HIGH SPEED</span>
+      <span class="hud-chip hud-fast" id="cockpitSteerMode" hidden><i data-icon="alert"></i> FULL STEERING</span>
+      <span class="hud-chip" id="cockpitPadChip"></span>
+      <!-- only while a controller is connected; its PS button reconnects it -->
+      <button class="top-btn cockpit-pad-off" id="cockpitPadDisconnect" type="button" aria-label="Disconnect controller" hidden></button>
+      <!-- the PS4's top speed, always in view while driving: - and + change
+           it, the middle opens the slider (controller-speed.js) -->
+      <div class="cspeed-bar" role="group" aria-label="PS4 controller top speed" data-cspeed-bar>
+        <button class="cspeed-step" type="button" data-cspeed-step="-1"
+                aria-label="Lower the PS4 controller's top speed">&minus;</button>
+        <button class="cspeed-bar-open" type="button" data-cspeed-chip
+                aria-expanded="false" aria-controls="cspeedPop" title="Open the slider">
+          <i data-icon="gamepad"></i>
+          <span class="cspeed-bar-label">PS4 top speed</span>
+          <strong data-cspeed-value>--</strong>
+          <i data-icon="chevronDown"></i>
+        </button>
+        <button class="cspeed-step" type="button" data-cspeed-step="1"
+                aria-label="Raise the PS4 controller's top speed">+</button>
+      </div>
+      <!-- autonomous code: driving (red, pulsing) or standing by -->
+      <button class="hud-chip auto-chip" id="cockpitAuto" type="button" data-auto-stop hidden></button>
+      <!-- armed with the controls closed: the keys still drive -->
+      <span class="hud-chip keys-chip" id="cockpitKeysChip" hidden><i data-icon="joystick"></i> Keys drive: W A S D / arrows · Space stops</span>
+      <!-- a controller on this device (a Steam Deck) can drive -->
+      <span class="hud-chip keys-chip" id="cockpitDeckChip" hidden><i data-icon="gamepad"></i> Steam Deck: sticks drive · B stops</span>
+    </div>
+
+    <div class="cockpit-msgs">
+      <div class="cockpit-alert" id="cockpitAlert" role="alert" hidden></div>
+
+      <!-- who else could be driving, autonomous code, too many clients -->
+      <div class="cockpit-ctrl-alert" id="cockpitCtrlAlert" role="status" hidden></div>
+
+      <div class="cockpit-note" id="cockpitNote" role="status" hidden></div>
+    </div>
+
+    <div class="cockpit-tools">
+      <!-- which panes show; on phones Camera and LiDAR take turns -->
+      <div class="range-switch pane-switch" role="group" aria-label="Panes">
+        <button type="button" data-pane-toggle="camera" title="Camera" aria-label="Camera"><i data-icon="camera"></i><span class="pane-word">Camera</span></button>
+        <button type="button" data-pane-toggle="lidar" title="LiDAR" aria-label="LiDAR"><i data-icon="radar"></i><span class="pane-word">LiDAR</span></button>
+        <button type="button" data-pane-toggle="controls" title="Controls" aria-label="Controls"><i data-icon="joystick"></i><span class="pane-word">Controls</span></button>
+      </div>
+      <!-- phones: arming and the limits drawer live here -->
+      <button class="top-btn cockpit-arm-quick" id="cockpitArmQuick" type="button">Arm</button>
+      <button class="top-btn cockpit-panel-toggle" id="cockpitPanelToggle" type="button"
+              aria-expanded="false" aria-controls="cockpitPanel" title="Safety check and speed limits"><i data-icon="gauge"></i><span class="btn-lbl"> Limits</span></button>
+
+      <!-- records the camera to a video file (camera.js) -->
+      <button class="top-btn cockpit-record-btn" type="button" data-record></button>
+
+      <!-- every "how it looks" option, in one place -->
+      <button class="top-btn cockpit-settings-btn" id="cockpitSettingsBtn" type="button"
+              aria-expanded="false" aria-controls="cockpitSettings" title="Layout and display settings"><i data-icon="sliders"></i><span class="btn-lbl"> Settings</span></button>
+      <!-- on the Drive tab: make this view cover the whole screen -->
+      <button class="top-btn cockpit-full-btn" id="cockpitGoFull" type="button"
+              title="Full screen (Esc to leave)"><i data-icon="maximize"></i><span class="btn-lbl"> Full screen</span></button>
+      <button class="top-btn cockpit-exit-btn" id="cockpitClose" type="button" title="Leave full screen (Esc) - disarms"><i data-icon="x"></i> Exit</button>
+      <!-- Steam Deck only: closes the dashboard itself (main.js) -->
+      <button class="top-btn" type="button" data-quit hidden
+              title="Close the dashboard"><i data-icon="power"></i><span class="btn-lbl"> Close</span></button>
+
+      <!-- one tap: tuck the bar away (the corner keeps E-stop and Show) -->
+      <button class="top-btn cockpit-icon-btn" id="cockpitBarHideBtn" type="button"
+              aria-label="Hide the top bar" title="Hide the top bar (on a computer the essentials move to a side rail)"><i data-icon="chevronUp"></i></button>
+
+      <!-- last, and set apart: always in the same corner -->
+      <span class="cockpit-sep" aria-hidden="true"></span>
+      <button class="estop-btn" id="cockpitEstop" type="button"><i data-icon="stopSign"></i><span class="estop-long">Emergency stop</span><span class="estop-short">E-stop</span></button>
+    </div>
+  </div>
+
+  <!-- while the bar is hidden: what must never be out of reach -->
+  <div class="cockpit-minibar" id="cockpitMinibar">
+    <div class="cockpit-mini-alert" id="cockpitMiniAlert" role="alert" hidden></div>
+    <!-- armed with the bar away: say so -->
+    <span class="drive-state" id="cockpitMiniState" hidden></span>
+    <button class="top-btn cockpit-mini-arm" id="cockpitMiniArm" type="button">Arm</button>
+    <button class="estop-btn" id="cockpitMiniEstop" type="button"></button>
+    <button class="top-btn" id="cockpitBarShow" type="button" title="Show the bar again"><i data-icon="chevronDown"></i> Show</button>
+  </div>
+
+  <!-- SIDE RAIL (a computer, with the top bar hidden): the bars'
+       essentials in one narrow column at the side, so the picture gets
+       the whole height. Each button stands in for one in the bars;
+       Settings > Side rail picks the side. -->
+  <nav class="cockpit-rail" id="cockpitRail" aria-label="Driving essentials">
+    <span class="drive-state" id="railState">DISARMED</span>
+    <span class="viewer-health" id="railHealth" data-health="unknown">UNKNOWN</span>
+    <span class="rail-battery" id="railBattery"></span>
+    <span class="rail-battery latency-chip" id="railLatency" hidden></span>
+
+    <label class="rail-check" title="Area is clear / wheels are off the ground">
+      <input type="checkbox" id="railConfirm"> Area clear
+    </label>
+    <button class="top-btn rail-arm" id="railArm" type="button">Arm</button>
+    <button class="stop-btn rail-stop" id="railStop" type="button" title="Stop and disarm (Space)">STOP</button>
+
+    <!-- the speedometer moves here from the bottom bar -->
+    <div class="rail-speedo" id="railSpeedoSlot"></div>
+    <span class="rail-who" id="railWho"></span>
+    <!-- the PS4's top speed, the same - and + as the top bar's -->
+    <div class="cspeed-side" role="group" aria-label="PS4 controller top speed" data-cspeed-bar>
+      <button class="cspeed-side-open" type="button" data-cspeed-chip
+              aria-expanded="false" aria-controls="cspeedPop" title="Open the slider">
+        <span class="cspeed-side-label"><i data-icon="gamepad"></i> PS4 top speed</span>
+        <strong data-cspeed-value>--</strong>
+      </button>
+      <div class="cspeed-side-steps">
+        <button class="cspeed-step" type="button" data-cspeed-step="-1"
+                aria-label="Lower the PS4 controller's top speed">&minus;</button>
+        <button class="cspeed-step" type="button" data-cspeed-step="1"
+                aria-label="Raise the PS4 controller's top speed">+</button>
+      </div>
+    </div>
+    <button class="rail-auto auto-chip" id="railAuto" type="button" data-auto-stop hidden></button>
+
+    <div class="rail-group" role="group" aria-label="Panes">
+      <button class="top-btn rail-btn" type="button" data-pane-toggle="camera" title="Camera"><i data-icon="camera"></i><span>Camera</span></button>
+      <button class="top-btn rail-btn" type="button" data-pane-toggle="lidar" title="LiDAR"><i data-icon="radar"></i><span>LiDAR</span></button>
+      <button class="top-btn rail-btn" type="button" data-pane-toggle="controls" title="Controls"><i data-icon="joystick"></i><span>Controls</span></button>
+    </div>
+    <button class="top-btn rail-btn" type="button" data-record="short"></button>
+    <button class="top-btn rail-btn" id="railSettings" type="button" aria-controls="cockpitSettings" title="Settings"><i data-icon="sliders"></i><span>Settings</span></button>
+    <button class="top-btn rail-btn" id="railGoFull" type="button" title="Full screen (Esc to leave)"><i data-icon="maximize"></i><span>Full screen</span></button>
+    <button class="top-btn rail-btn" id="railExit" type="button" title="Leave full screen (Esc) - disarms"><i data-icon="x"></i><span>Exit</span></button>
+    <button class="top-btn rail-btn" id="railShow" type="button" title="Bring the top bar back"><i data-icon="chevronDown"></i><span>Show bar</span></button>
+
+    <span class="rail-fill"></span>
+    <button class="estop-btn rail-estop" id="railEstop" type="button"></button>
+  </nav>
+
+  <div class="cockpit-view">
+
+    <!-- SETTINGS: how the view looks, in one place (the controls card
+         keeps only what drives). A panel under the bar on desktops, a
+         drawer on phones. -->
+    <div class="cockpit-settings" id="cockpitSettings" role="dialog" aria-label="Settings" hidden>
+      <div class="cs-head">
+        <h2>Settings</h2>
+        <button class="pane-hide" id="cockpitSettingsClose" type="button" aria-label="Close settings"><i data-icon="x"></i></button>
+      </div>
+
+      <section class="cs-group">
+        <h3>Arrangement</h3>
+        <label class="cockpit-switch cockpit-lidar-float-switch">
+            <span class="cockpit-switch-text">
+              <strong>LiDAR over camera</strong>
+              <span>A small LiDAR window on the picture</span>
+            </span>
+            <input type="checkbox" id="lidarFloatToggle" role="switch">
+          </label>
+
+        <label class="cockpit-switch cs-desk-only">
+          <span class="cockpit-switch-text">
+            <strong>Dock the controls</strong>
+            <span>A column beside the pictures instead of a card over them</span>
+          </span>
+          <input type="checkbox" id="controlsDockToggle" role="switch">
+        </label>
+
+        <label class="cockpit-switch">
+          <span class="cockpit-switch-text">
+            <strong>Hide the top bar</strong>
+            <span class="cs-desk-only">More picture: the essentials move to the side rail.</span>
+            <span class="cs-touch-only">More picture. Emergency stop and Show stay in the corner.</span>
+          </span>
+          <input type="checkbox" id="barHiddenToggle" role="switch">
+        </label>
+
+        <div class="cockpit-switch cs-choice cs-desk-only">
+          <span class="cockpit-switch-text">
+            <strong>Side rail</strong>
+            <span>With the top bar hidden, the essentials go in a column on this side</span>
+          </span>
+          <div class="range-switch" role="group" aria-label="Side rail">
+            <button type="button" data-rail="left">Left</button>
+            <button type="button" data-rail="right">Right</button>
+          </div>
+        </div>
+
+        <label class="cockpit-switch cs-touch-only">
+          <span class="cockpit-switch-text">
+            <strong>Controls only</strong>
+            <span>Just the sticks and STOP on the picture. E-stop, Arm and Show stay in the corner.</span>
+          </span>
+          <input type="checkbox" id="controlsOnlyToggle" role="switch">
+        </label>
+      </section>
+
+      <section class="cs-group">
+        <h3>On the picture</h3>
+        <label class="cockpit-switch">
+            <span class="cockpit-switch-text">
+              <strong>Edge warning lights</strong>
+              <span>Screen edges glow when something is close</span>
+            </span>
+            <input type="checkbox" id="cockpitGlowToggle" role="switch" checked>
+          </label>
+
+        <label class="cockpit-switch">
+            <span class="cockpit-switch-text">
+              <strong>Close-object warning</strong>
+              <span>The "Very close" message on the picture. Drag it to move it.</span>
+            </span>
+            <input type="checkbox" id="cockpitWarnToggle" role="switch" checked>
+          </label>
+      </section>
+
+      <section class="cs-group">
+        <h3>LiDAR</h3>
+        <!-- the pane's own toolbar hides while it floats; these always work -->
+        <div class="cs-field">
+          <span>View</span>
+          <div class="range-switch view-switch" role="group" aria-label="LiDAR view">
+            <button type="button" data-lidar-view="lines">Lines</button>
+            <button type="button" data-lidar-view="detailed">Detailed</button>
+          </div>
+        </div>
+        <div class="cs-field">
+          <span>Range (m)</span>
+          <div class="range-switch" role="group" aria-label="LiDAR range" data-range-for="pane">
+            <button type="button" data-lidar-range="auto">Auto</button>
+            <button type="button" data-lidar-range="1">1</button>
+            <button type="button" data-lidar-range="2">2</button>
+            <button type="button" data-lidar-range="4">4</button>
+            <button type="button" data-lidar-range="8">8</button>
+            <button type="button" data-lidar-range="15">15</button>
+          </div>
+        </div>
+        <label class="cockpit-switch">
+          <span class="cockpit-switch-text">
+            <strong>Sweep line</strong>
+            <span>The turning line on the Detailed view</span>
+          </span>
+          <input type="checkbox" id="cockpitSweepToggle" role="switch" checked>
+        </label>
+      </section>
+
+      <section class="cs-group">
+        <h3>Readouts</h3>
+        <div class="cs-field">
+          <span>Speed in</span>
+          <div class="range-switch" role="group" aria-label="Speed units">
+            <button type="button" data-speed-unit="mps">m/s</button>
+            <button type="button" data-speed-unit="kmh">km/h</button>
+            <button type="button" data-speed-unit="mph">mph</button>
+          </div>
+        </div>
+      </section>
+
+      <section class="cs-group">
+        <h3>Screen</h3>
+        <label class="cockpit-switch">
+          <span class="cockpit-switch-text">
+            <strong>Keep the screen awake</strong>
+            <span>No dimming or locking while this view is open</span>
+          </span>
+          <input type="checkbox" id="wakeToggle" role="switch" checked>
+        </label>
+
+        <label class="cockpit-switch cs-touch-only">
+          <span class="cockpit-switch-text">
+            <strong>Buzz when very close</strong>
+            <span>A short vibration the moment something is under 0.5 m, while armed</span>
+          </span>
+          <input type="checkbox" id="buzzToggle" role="switch" checked>
+        </label>
+      </section>
+
+      <section class="cs-group cs-desk-only">
+        <h3>Keyboard</h3>
+        <dl class="cs-keys">
+          <dt><kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> or arrows</dt><dd>Drive, while armed and held</dd>
+          <dt><kbd>Space</kbd></dt><dd>Stop and disarm</dd>
+          <dt><kbd>Esc</kbd></dt><dd>Close this panel, then leave full screen</dd>
+        </dl>
+      </section>
+
+      <section class="cs-group cs-touch-only">
+        <h3>Thumb sticks</h3>
+        <button class="link-btn cockpit-arrange-btn" id="cockpitArrangeBtn" type="button"
+                  title="Drag the thumb sticks and STOP to where your thumbs reach">
+            <i data-icon="move"></i> Move sticks &amp; STOP
+          </button>
+      </section>
+
+      <section class="cs-group">
+        <h3>Camera</h3>
+        <button class="link-btn" id="cockpitCamConnect" type="button"><i data-icon="refresh"></i> Reconnect camera</button>
+      </section>
+
+      <!-- every layout, position and switch above, back to the start -->
+      <button class="top-btn cs-reset" id="cockpitResetAll" type="button"
+              title="Layouts, positions and the switches above, back to their defaults (disarms)">
+        <i data-icon="refresh"></i> Reset all view settings
+      </button>
+    </div>
+
+
+    <!-- the panes, side by side: shown, hidden, resized (drag a divider)
+         and reordered (drag a title onto another pane). On phones one
+         picture shows at a time and the controls are thumb sticks. -->
+    <div class="cockpit-panes" id="cockpitPanes">
+
+      <section class="pane" data-pane="camera">
+        <div class="pane-head" title="Drag onto another pane to swap places"><i data-icon="move"></i> Camera</div>
+        <div class="pane-body cockpit-cam" id="cockpitCam">
+          <!-- parking-sensor glow on the picture: the edge nearest the obstacle lights up -->
+          <div class="cockpit-glow glow-front" id="glowFront"></div>
+          <div class="cockpit-glow glow-left" id="glowLeft"></div>
+          <div class="cockpit-glow glow-right" id="glowRight"></div>
+        </div>
+      </section>
+
+      <section class="pane" data-pane="lidar" data-float="lidar">
+        <div class="pane-head" title="Drag onto another pane to swap places"><i data-icon="move"></i> LiDAR
+          <!-- a small window over the camera instead of a pane beside it -->
+          <button class="pane-act" id="lidarFloatBtn" type="button"
+                  title="Float the LiDAR over the camera (drag to move, corner to resize)"><i data-icon="split"></i> Float</button>
+          <button class="pane-hide" id="lidarHide" type="button"
+                  aria-label="Close the LiDAR" title="Close the LiDAR (LiDAR in the bar brings it back)"><i data-icon="x"></i></button>
+        </div>
+        <div class="pane-body">
+          <div class="viewer-radar">
+
+            <!-- the LiDAR's own controls ride with its pane -->
+            <div class="viewer-radar-tools">
+              <div class="range-switch view-switch" role="group" aria-label="LiDAR view">
+                <button type="button" data-lidar-view="lines">Lines</button>
+                <button type="button" data-lidar-view="detailed">Detailed</button>
+              </div>
+              <button type="button" class="select-toggle" data-beam-select aria-pressed="false"
+                      title="Pick a range of beams by index"><i data-icon="crosshair"></i> Select beams</button>
+              <button type="button" class="select-toggle sweep-toggle" data-sweep-toggle aria-pressed="true"
+                      title="The radar's turning line, on or off"><i data-icon="radar"></i> Sweep</button>
+              <span class="viewer-range-label">Range (m)</span>
+              <div class="range-switch" role="group" aria-label="LiDAR plot range" data-range-for="pane">
+                <button type="button" data-lidar-range="auto">Auto</button>
+                <button type="button" data-lidar-range="0.5">0.5</button>
+                <button type="button" data-lidar-range="1">1</button>
+                <button type="button" data-lidar-range="2">2</button>
+                <button type="button" data-lidar-range="4">4</button>
+                <button type="button" data-lidar-range="8">8</button>
+                <button type="button" data-lidar-range="15">15</button>
+              </div>
+            </div>
+
+            <div class="viewer-radar-plot">
+              <div class="viewer-radar-box">
+                <canvas id="paneRadar" width="480" height="480"
+                        aria-label="LiDAR map: drag to look around, scroll to zoom, double-click to reset"></canvas>
+                <button class="radar-center" id="paneCenterBtn" type="button" disabled
+                        title="Put the car back in the middle (keeps the zoom)"><i data-icon="locate"></i> Center</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- the beam select panel sits here while selecting; bottom
+               right is the LiDAR's blind spot, so it hides no returns -->
+          <div class="viewer-select" id="paneSelectSlot"></div>
+        </div>
+      </section>
+
+      <!-- desktop: a frosted card floating over the picture - drag its
+           title bar to move it, x to hide it. Phones: the sticks, STOP
+           and the settings drawer. -->
+      <section class="pane" data-pane="controls" data-float="controls">
+        <div class="pane-head" title="Drag to move the controls"><i data-icon="move"></i> Controls
+          <!-- a column beside the pictures instead of a card over them -->
+          <button class="pane-act" id="controlsDockBtn" type="button"
+                  title="Dock the controls beside the pictures"><i data-icon="split"></i> Dock</button>
+          <button class="pane-hide" id="controlsHide" type="button"
+                  aria-label="Hide the controls" title="Hide the controls (stays armed: the keys still drive, Space stops)"><i data-icon="x"></i></button>
+        </div>
+        <aside class="cockpit-panel pane-body" id="cockpitPanel">
+
+          <div class="cockpit-panel-head">
+            <h2>Controls</h2>
+            <button class="link-btn" id="cockpitPanelClose" type="button"
+                    title="Hide the controls for a clear view (Controls brings them back)">Hide</button>
+          </div>
+
+          <div class="arm-row">
+            <label class="arm-check">
+              <input type="checkbox" id="cockpitConfirm">
+              Area is clear / wheels are off the ground
+            </label>
+            <button class="arm-btn" id="cockpitArm" type="button" disabled>Arm</button>
+          </div>
+
+          <!-- hold to drive (the pad, keys, sticks), or an autonomous run: the
+               page drives at a set speed and steering until stopped -->
+          <div class="range-switch drive-mode" role="group" aria-label="Driving mode">
+            <button type="button" data-drive-mode="hold">Hold to drive</button>
+            <button type="button" data-drive-mode="auto">Autonomous run</button>
+          </div>
+
+          <div class="auto-panel" id="autoPanel">
+            <!-- first, so starting and stopping never needs scrolling -->
+            <button class="auto-go" id="autoStart" type="button">Start autonomous run</button>
+            <div class="auto-status" id="autoStatus" role="status"></div>
+
+            <p class="auto-warn">The car drives itself at this speed and steering, with
+              nothing held, until you stop it or the time is up. STOP, Space or
+              Emergency stop end it; so does leaving this page.</p>
+
+            <label class="cockpit-switch auto-switch">
+              <span class="cockpit-switch-text">
+                <strong>Full speed</strong>
+                <span id="autoFullText">Your Max speed. Off: set it with the slider.</span>
+              </span>
+              <input type="checkbox" id="autoFull" role="switch" checked>
+            </label>
+
+            <label class="cockpit-switch auto-switch">
+              <span class="cockpit-switch-text">
+                <strong>Hold R1 to run</strong>
+                <span id="autoR1Sub">Hold R1 on the controller for half a second to start; let go to stop.</span>
+              </span>
+              <input type="checkbox" id="autoR1" role="switch">
+            </label>
+
+            <label class="cockpit-switch auto-switch">
+              <span class="cockpit-switch-text">
+                <strong>Steer away from obstacles</strong>
+                <span>Uses the LiDAR: if something is ahead, the run turns toward the roomier side.</span>
+              </span>
+              <input type="checkbox" id="autoAvoid" role="switch" checked>
+            </label>
+
+            <div class="auto-guard" id="autoGuard">
+              <label class="cockpit-switch auto-switch">
+                <span class="cockpit-switch-text">
+                  <strong>Obstacle stop</strong>
+                  <span id="autoGuardText">Needs the new system_diagnostics.py on the car.</span>
+                </span>
+                <input type="checkbox" id="autoGuardOn" role="switch" disabled>
+              </label>
+              <div class="auto-row">
+                <label for="autoGuardMargin">Keep clear</label>
+                <select id="autoGuardMargin" disabled title="Extra room, past what the car needs to brake">
+                  <option value="0.2">0.2 m</option>
+                  <option value="0.3" selected>0.3 m</option>
+                  <option value="0.5">0.5 m</option>
+                  <option value="1">1 m</option>
+                </select>
+              </div>
+            </div>
+
+            <label class="slider-row" id="autoSpeedRow">
+              <span>Speed</span>
+              <input type="range" id="autoSpeed" min="-3" max="3" step="0.05" value="0.2">
+              <strong id="autoSpeedValue">0.20 m/s</strong>
+            </label>
+
+            <label class="slider-row">
+              <span>Steering</span>
+              <input type="range" id="autoSteer" min="-0.34" max="0.34" step="0.01" value="0">
+              <strong id="autoSteerValue">0°</strong>
+            </label>
+
+            <div class="auto-row">
+              <label for="autoFor">Run for</label>
+              <select id="autoFor">
+                <option value="5">5 s</option>
+                <option value="10">10 s</option>
+                <option value="30">30 s</option>
+                <option value="60">1 min</option>
+                <option value="0" selected>until stopped</option>
+              </select>
+              <button class="link-btn" id="autoZero" type="button" title="Speed 0, steering straight">Reset</button>
+            </div>
+
+          </div>
+
+          <div class="cockpit-pad-wrap">
+            <div class="drive-pad" id="cockpitPad" aria-label="Drive pad: drag to drive">
+              <div class="pad-axis pad-axis-x"></div>
+              <div class="pad-axis pad-axis-y"></div>
+              <span class="pad-label pad-up">FORWARD</span>
+              <span class="pad-label pad-down">REVERSE</span>
+              <span class="pad-label pad-left">LEFT</span>
+              <span class="pad-label pad-right">RIGHT</span>
+              <div class="pad-knob" id="cockpitKnob"></div>
+            </div>
+
+            <button class="stop-btn" id="cockpitStop" type="button" title="Stop and disarm (Space)">STOP</button>
+          </div>
+
+          <!-- limits: always in view while driving -->
+          <div class="cockpit-limits" id="cockpitMore">
+          <div class="cockpit-limits-group">
+            <div class="cspeed" data-cspeed></div>
+          </div>
+
+          <div class="cockpit-limits-head">Limits <span class="cockpit-more-sum" id="cockpitMoreSum"></span></div>
+
+          <!-- the PS4's top speed is above; these limit this page only -->
+          <div class="cockpit-limits-sub">Pad and keys on this page</div>
+
+          <label class="slider-row">
+            <span>Max speed</span>
+            <input type="range" id="cockpitMaxSpeed" min="0.3" max="3" step="0.1" value="3">
+            <strong id="cockpitMaxSpeedValue">3.0 m/s</strong>
+          </label>
+
+          <label class="slider-row">
+            <span>Max steering</span>
+            <input type="range" id="cockpitMaxSteer" min="0.05" max="0.34" step="0.01" value="0.34">
+            <strong id="cockpitMaxSteerValue">19°</strong>
+          </label>
+
+          <div class="card-hint cockpit-keys">
+            Drag the pad, or hold
+            <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> / arrows.
+            <kbd>Space</kbd> stops.
+          </div>
+
+          <button class="top-btn warn-btn" id="cockpitSpeedUnlock" type="button"></button>
+          <button class="top-btn warn-btn" id="cockpitSteerUnlock" type="button"></button>
+          </div>
+
+        </aside>
+      </section>
+
+    </div>
+
+    <!-- the LiDAR in one sentence, only when something is close. It
+         floats on the picture: drag it anywhere, or hide it with its x
+         (Close-object warning in the controls brings it back). -->
+    <div class="cockpit-warn" id="cockpitWarn" data-float="warning" title="Drag to move this warning">
+      <div class="cockpit-lidar tone-none" id="cockpitLidar" hidden></div>
+      <button class="cockpit-warn-hide" id="cockpitWarnHide" type="button"
+              aria-label="Hide this warning" title="Hide (turn it back on in Settings)"><i data-icon="x"></i></button>
+    </div>
+
+    <!-- touch layout: steer with the left thumb, throttle with the right -->
+    <div class="stick stick-steer" id="stickSteer" data-movable="steer" aria-label="Steering: drag left or right">
+      <div class="stick-track"></div>
+      <div class="stick-knob" id="stickSteerKnob"></div>
+      <span class="stick-label"><i data-icon="chevronLeft"></i> STEER <i data-icon="chevronRight"></i></span>
+    </div>
+
+    <div class="stick stick-throttle" id="stickThrottle" data-movable="throttle" aria-label="Throttle: drag up to go, down to reverse">
+      <div class="stick-track"></div>
+      <div class="stick-knob" id="stickThrottleKnob"></div>
+      <span class="stick-label"><span><i data-icon="chevronUp"></i> GO</span><span><i data-icon="chevronDown"></i> REV</span></span>
+    </div>
+
+    <button class="stop-btn cockpit-stop-touch" id="cockpitStopTouch" type="button" data-movable="stop">STOP</button>
+
+    <!-- arranging: what to do, and the way out -->
+    <div class="cockpit-arrange-bar" id="cockpitArrangeBar" hidden>
+      <span><i data-icon="move"></i> Drag the sticks and STOP anywhere. Driving is off while you arrange.</span>
+      <button class="top-btn" id="cockpitArrangeReset" type="button">Reset</button>
+      <button class="top-btn cockpit-arrange-done" id="cockpitArrangeDone" type="button">Done</button>
+    </div>
+
+  </div>
+
+
+
+  <!-- the computer's numbers, and the command / steering readout -->
+  <div class="cockpit-bottom">
+    <div class="cockpit-sys" id="cockpitSys"></div>
+    <!-- who is driving and the round trip to the car (every command pays
+         about half of it). A phone has no bottom bar, so cockpit.js moves
+         these to its top bar. -->
+    <div class="cockpit-bottom-info" id="cockpitBottomInfo">
+      <span class="hud-chip latency-chip" id="cockpitLatency" hidden></span>
+      <span class="hud-chip who-chip" id="cockpitWho" data-tone=""></span>
+    </div>
+  <div class="cockpit-hud">
+    <!-- speedometer: measured speed as the arc, your command as the
+         orange tick, the scale up to your max-speed limit -->
+    <div class="speedo" id="cockpitSpeedo" aria-label="Speed">
+      <svg viewBox="0 0 120 68" aria-hidden="true">
+        <defs>
+          <!-- left to right along the arc: calm, then hot near the limit -->
+          <linearGradient id="speedoHeat" gradientUnits="userSpaceOnUse" x1="10" y1="0" x2="110" y2="0">
+            <stop offset="0" stop-color="#2fe08a"/>
+            <stop offset=".55" stop-color="#ffd23f"/>
+            <stop offset=".8" stop-color="#ff7900"/>
+            <stop offset="1" stop-color="#ff3b30"/>
+          </linearGradient>
+          <linearGradient id="speedoCold" gradientUnits="userSpaceOnUse" x1="10" y1="0" x2="110" y2="0">
+            <stop offset="0" stop-color="#8ab4ff"/>
+            <stop offset="1" stop-color="#4f7cff"/>
+          </linearGradient>
+          <radialGradient id="speedoFace" cx="60" cy="62" r="56" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#1c222b"/>
+            <stop offset="1" stop-color="#0b0d10"/>
+          </radialGradient>
+          <!-- cuts the arc into LED segments -->
+          <mask id="speedoSegments" maskUnits="userSpaceOnUse" x="0" y="0" width="120" height="68">
+            <path class="speedo-seg" d="M 10 62 A 50 50 0 0 1 110 62" pathLength="100"/>
+          </mask>
+        </defs>
+        <path class="speedo-face" d="M 3 62 A 57 57 0 0 1 117 62 Z"/>
+        <path class="speedo-ticks" id="speedoTicks"/>
+        <path class="speedo-ticks speedo-ticks-red" id="speedoTicksRed"/>
+        <g mask="url(#speedoSegments)">
+          <path class="speedo-track" d="M 10 62 A 50 50 0 0 1 110 62" pathLength="100"/>
+        </g>
+        <g class="speedo-glow">
+          <g mask="url(#speedoSegments)">
+            <path class="speedo-fill" id="speedoFill" d="M 10 62 A 50 50 0 0 1 110 62" pathLength="100"/>
+          </g>
+        </g>
+        <circle class="speedo-head" id="speedoHead" r="3.1"/>
+        <line class="speedo-cmd" id="speedoCmd" x1="60" y1="8" x2="60" y2="20"/>
+      </svg>
+      <span class="speedo-v" id="speedoValue">0.0</span>
+      <span class="speedo-u" id="speedoUnit">m/s</span>
+      <span class="speedo-max" id="speedoMax">max 3.0</span>
+    </div>
+    <div>
+      <span class="hud-k">Command</span>
+      <span class="hud-v" id="cockpitCmd">0.00 m/s</span>
+    </div>
+    <div class="hud-steer">
+      <span class="hud-k">Steering <span id="cockpitSteer">0°</span></span>
+      <div class="steer-bar"><i id="cockpitSteerMark"></i></div>
+    </div>
+    <div>
+      <span class="hud-k">Measured</span>
+      <span class="hud-v" id="cockpitMeas">—</span>
+    </div>
+  </div>
+  </div>
+
+  <!-- phones held upright: the game layout needs the phone sideways -->
+  <div class="cockpit-rotate">
+    <div class="cockpit-rotate-icon" aria-hidden="true"><i data-icon="phoneRotate"></i></div>
+    <strong>Turn your phone sideways to drive</strong>
+    <span>Drive mode uses the whole screen: steer with your left thumb, throttle with your right.</span>
+    <button class="top-btn" id="cockpitRotateClose" type="button"><i data-icon="x"></i> Exit full screen</button>
+  </div>
+
+</div>
+
+<script>
+  /* Phones/tablets: the tab bar lives in the sticky top bar. Wider
+     screens keep it in the page, exactly where it was. */
+  (function () {
+    const tabs = document.querySelector(".tabs");
+    const topbar = document.querySelector(".topbar");
+    const marker = document.createComment("tabs-home");
+    tabs.before(marker);
+    const mq = window.matchMedia("(max-width: 800px)");
+    function place() {
+      if (mq.matches) topbar.appendChild(tabs);
+      else marker.after(tabs);
+    }
+    mq.addEventListener("change", place);
+    place();
+
+    const toggle = document.getElementById("topbarToggle");
+    function fold(collapsed) {
+      topbar.classList.toggle("collapsed", collapsed);
+      toggle.querySelector(".toggle-word").textContent = collapsed ? "Show" : "Hide";
+      toggle.setAttribute("aria-label", (collapsed ? "Show" : "Hide") + " connection settings");
+      toggle.setAttribute("aria-expanded", String(!collapsed));
+      try { localStorage.setItem("topbarCollapsed", collapsed ? "1" : "0"); } catch (e) {}
+    }
+    toggle.addEventListener("click", () =>
+      fold(!topbar.classList.contains("collapsed")));
+    try { if (localStorage.getItem("topbarCollapsed") === "1") fold(true); } catch (e) {}
+  })();
+</script>
+
+<script src="js/config.js?v=20261109f"></script>
+<script src="js/icons.js?v=20261109f"></script>
+<script src="js/helpers.js?v=20261109f"></script>
+<script src="js/connection.js?v=20261109f"></script>
+<script src="js/graph-data.js?v=20261109f"></script>
+<script src="js/health.js?v=20261109f"></script>
+<script src="js/status-panels.js?v=20261109f"></script>
+<script src="js/advanced-panels.js?v=20261109f"></script>
+<script src="js/system-tiles.js?v=20261109f"></script>
+<script src="js/metrics.js?v=20261109f"></script>
+<script src="js/camera.js?v=20261109f"></script>
+<script src="js/checks.js?v=20261109f"></script>
+<script src="js/lidar-select.js?v=20261109f"></script>
+<script src="js/estop.js?v=20261109f"></script>
+<script src="js/controller.js?v=20261109f"></script>
+<script src="js/avoid.js?v=20261109f"></script>
+<script src="js/drive.js?v=20261109f"></script>
+<script src="js/controller-speed.js?v=20261109f"></script>
+<script src="js/cockpit.js?v=20261109f"></script>
+<script src="js/radar.js?v=20261109f"></script>
+<script src="js/main.js?v=20261109f"></script>
+
+</body>
+</html>
