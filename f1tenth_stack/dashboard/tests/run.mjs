@@ -9,6 +9,7 @@ const here = p => fileURLToPath(new URL(p, import.meta.url));
 const checks = [
   ['LiDAR plot geometry', 'node', [here('verify_radar.mjs')]],
   ['Select beams index and angle math', 'node', [here('verify_testing.mjs')]],
+  ['LiDAR steer-away for autonomous runs', 'node', [here('verify_avoid.mjs')]],
   ['System list, joystick check, connection banners', 'node', [here('verify_system.mjs')]],
   ['Camera proxy: newest-frame relay', 'python3', [here('../../f1tenth_stack/camera_http.py'), '--self-test']],
   ['Robot side: e-stop, joystick, parsers, disconnect', 'python3', [here('../../f1tenth_stack/system_diagnostics.py'), '--self-test']],

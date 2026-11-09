@@ -10,7 +10,7 @@ import fs from 'fs';
 // Paths are from this file, so the check runs from any folder.
 const page = f => new URL('../' + f, import.meta.url);
 const html = fs.readFileSync(page('dashboard.html'), 'utf8');
-const src = [...html.matchAll(/<script src="([^"]+)"><\/script>/g)]
+const src = [...html.matchAll(/<script src="([^"?]+)(?:\?[^"]*)?"><\/script>/g)]
   .map(m => fs.readFileSync(page(m[1]), 'utf8'))
   .join('\n');
 

@@ -70,6 +70,7 @@ Most of this is probably already done on the cars; each step says how to check b
 4. A `ROS_DOMAIN_ID` no other car uses, or the page lists the other car's nodes as well. Check with `echo $ROS_DOMAIN_ID`. The cars so far use 200 plus the robot's number, set in `~/.bashrc` (`export ROS_DOMAIN_ID=206` on robot 6, 202 on robot 2).
 5. The camera device. Bringup reads `/dev/video4` by default; check with `v4l2-ctl --list-devices`, and if the RealSense's colour stream is somewhere else, start bringup with `camera_device:=<device>`.
 6. The VESC driver's temperature patch, or the FET temperature shows "no reading" (see [Known gaps](#known-gaps)).
+7. `joy_teleop` with live axis mappings, or the controller's top speed cannot be set from the page (the Controller chip says why). Step 1 builds only `f1tenth_stack`, so after the `teleop_tools` update also run `colcon build --packages-select joy_teleop` and restart bringup. Check: `grep -c set_axis_mapping_parameters ~/f1tenth_ws/install/joy_teleop/lib/python3*/site-packages/joy_teleop/joy_teleop.py` prints 1 or more.
 
 ### Working on the page from a laptop
 
@@ -485,7 +486,7 @@ Shows how fast the car is going, and whether odometry is working.
 
 **What is sent.** `/odom`, field `twist.twist.linear.x`.
 
-**On the page.** The Speed tile (MPH and m/s), the Odometry row, and the driving view's speed readout and speedometer, in the unit chosen in its Settings (m/s, km/h or mph; `SPEED_UNITS` in `dashboard/js/cockpit.js`).
+**On the page.** The Speed tile, the Odometry row, and the driving view's speed readout and speedometer. Every speed on the page uses the unit chosen in the driving view's Settings (m/s, km/h or mph; `SPEED_UNITS` in `dashboard/js/helpers.js`).
 
 **To change.** The Speed tile is `getSpeedMetric()` in `dashboard/js/metrics.js`; the row is the odometry part of `subsystemData()` in `dashboard/js/health.js`; the "waits for a steer" rule is `waitsForSteer` in `TOPICS` (`dashboard/js/config.js`) and `odomWaitingForSteer()` in `dashboard/js/health.js`.
 
@@ -525,8 +526,16 @@ Shows whether the PS4 controller is connected and whether ROS can read it. The p
 | What is probed | `f1tenth_stack/system_diagnostics.py` | the gamepad part of `_probe_slow()` |
 | Deadman buttons | `f1tenth_stack/system_diagnostics.py`, `dashboard/js/estop.js` | `JOY_DEADMEN = (4, 5)`; `JOY_L1 = 4`, `JOY_R1 = 5`. Both must match `config/joy_teleop.yaml` |
 | Joystick check wording | `f1tenth_stack/system_diagnostics.py` | `joy_verdict()` |
+| Top speed range | `f1tenth_stack/system_diagnostics.py` | `CONTROLLER_SPEEDS = (0.2, 5.0)` (m/s) |
+| Top speed warning, step, tap grouping | `dashboard/js/controller-speed.js` | `CSPEED_FAST = 3` (m/s), `CSPEED_STEP = 0.1`, `CSPEED_SETTLE_MS = 300` |
+| Where the top speed is saved | `f1tenth_stack/system_diagnostics.py` | `CONTROLLER_SPEED_FILE` (`~/.ros/controller_max_speed`) |
+| Top speed before anyone sets one | `config/joy_teleop.yaml` | `human_control` > `drive-speed` > `scale: 5.0` |
 
 The fix for "ROS cannot read it" is `sudo usermod -aG input <user>` on the robot, then log out and back in.
+
+**Top speed.** How fast the controller drives at full stick, set from the page. On the Drive tab it is always in view: **-** and **+** in the driving view's top bar (or a button in the side rail), with the slider in a popup. On the other tabs the **Controller** chip at the right end of the footer opens the same popup, and the full control is on the Controller tab and in the phone Limits drawer. Quick taps on - and + send one change. Above 3 m/s the note warns to keep the area clear. It takes effect on the next `/joy` message, with no restart. Full stick drives at `axis × scale`, where the scale is `joy_teleop`'s `human_control.axis_mappings.drive-speed.scale` (5.0 in `config/joy_teleop.yaml`, so 5 m/s). The page sets `system_diagnostics`' `controller_max_speed` parameter (0.2 to 5.0 m/s); the node saves it to `~/.ros/controller_max_speed` and sets `joy_teleop`'s scale to it. Every 2 seconds it reads the scale back and sets it again if they differ, so a restarted `joy_teleop` (bringup, the page's Restart, a reboot) gets the saved speed back within 2 seconds. With nothing saved, the yaml's value stands. To go back to 5 m/s, set 5.0. Report `system: Controller speed`, keys `max m/s`, `saved m/s`, `live`, `range m/s`.
+
+This needs `joy_teleop` with live axis mappings (a small change to `teleop_tools`): the original reads its scales once, at start, and would accept a new value without using it. `system_diagnostics` checks the installed `joy_teleop` for that change (`joy_teleop_live()`); without it the page says so and the slider is disabled. After the `teleop_tools` update, every car needs `colcon build --packages-select joy_teleop` and a bringup restart; see [Setting up another car](#setting-up-another-car).
 
 ### Who is in control
 
@@ -571,7 +580,7 @@ The Drive tab and full screen are one view, built from panes: Camera, LiDAR and 
 | Ready-made layouts | `dashboard/js/cockpit.js` | `LAYOUTS` |
 | What counts as a phone | `dashboard/js/cockpit.js` | `COCKPIT_TOUCH_QUERY` (touch-first, or 900 px wide or less) |
 | Edge light directions | `dashboard/js/cockpit.js` | `COCKPIT_GLOW_SECTORS` |
-| Speed units | `dashboard/js/cockpit.js` | `SPEED_UNITS` |
+| Speed units | `dashboard/js/helpers.js` | `SPEED_UNITS` |
 | Latency check and its colours | `dashboard/js/cockpit.js` | `LATENCY_EVERY_MS = 2000`, `LATENCY_WARN_MS = 50`, `LATENCY_BAD_MS = 120` |
 | How far a title drag goes before it is a move | `dashboard/js/cockpit.js` | `PANE_DRAG_START_PX = 5` |
 | Saved settings that Reset clears | `dashboard/js/cockpit.js` | `VIEW_KEYS` |
@@ -605,6 +614,8 @@ Drives the car from a browser, through the same input an autonomous stack uses.
 | Ramping | `dashboard/js/drive.js` | `KEY_ACCEL = 8.0`, `KEY_STEER_RATE = 8.0` (keys); `PAD_ACCEL = 20.0`, `PAD_STEER_RATE = 20.0` (pad and sticks) |
 | Command rate, stop burst | `dashboard/js/drive.js` | `DRIVE_HZ = 50`, `DRIVE_NOW_MIN_MS = 10`, `STOP_BURST = 5` |
 | Keys | `dashboard/js/drive.js` | `KEY_FWD`, `KEY_BACK`, `KEY_LEFT`, `KEY_RIGHT` |
+| Steer-away distances and strength | `dashboard/js/avoid.js` | `AVOID`: `frontHalfAngle` 20°, `sideNear` 8°, `sideFar` 75°, `lookaheadBase` 0.8 m, `lookaheadPerMs` 0.8, `hardStop` 0.4 m, `releaseFactor` 1.25, `minTurn` 0.5 |
+| Steer-away scan age limit | `dashboard/js/drive.js` | `AVOID_SCAN_MAX_AGE_MS = 500` |
 | When closing the controls disarms | `dashboard/js/cockpit.js` | the start of `applyPanes()` |
 
 ### Drive watchdog
@@ -659,6 +670,8 @@ Drives the car at a set speed and steering from the page, the way `ros2 topic pu
 
 **How it works.** In the Drive tab's Autonomous run mode the page publishes `/drive` (marked `header.frame_id = "dashboard_auto"`) 50 times a second at the panel's speed and steering, for a set time or until stopped. With **Hold R1 to run**, R1 held for half a second starts it and letting go stops it. **With a controller connected to the car, R1 must be held**: `config/joy_teleop.yaml`'s `default` command sends zero speed on `/teleop` with every `/joy` message, and the mux puts `/teleop` (100) ahead of `/drive` (10), so `/drive` only gets through while R1, the autonomous deadman, is held. The page shows this by switching Hold R1 to run on, locked, while `/joy` is coming in.
 
+**Steering away.** While the run drives forward, `lidarAvoid()` (`dashboard/js/avoid.js`, a pure function of the latest `/scan`, the speed and the steering limit) replaces the run's steering when something is within ±20° ahead and closer than 0.8 m plus 0.8 m per m/s. It turns toward the side with more room (nearest point 8° to 75° left against right), holds that side until clear by 25% extra, and steers half of full lock at the trigger distance up to full lock at 0.4 m. It leaves the speed alone, does nothing in reverse, and ignores a scan older than 500 ms. It runs in the page, so it only steers this page's run; the obstacle stop below is separate and still applies.
+
 The obstacle stop runs on the robot: while anything drives the car forward through `/drive` (the page's run, a `ros2 topic pub`, your own node), `system_diagnostics` reads `/scan` and finds the closest return in a 0.4 m wide corridor ahead (the third closest, so a stray return does not count). If it is closer than the distance the car needs to stop (a margin, plus 0.15 s of travel, plus braking at 4 m/s²), it turns the [emergency stop](#emergency-stop) on. Something right beside the LiDAR reads as "right at the LiDAR". It does nothing while L1 is held or for the page's hold-to-drive, and it stops the car if no scan has arrived for 0.5 s while driving forward.
 
 **Stop autonomous** (the indicator in the status bar, top bar and side rail) ends the page's run, and also stops a `ros2 topic pub /drive` on the car: the service `/system_diagnostics/stop_autonomous` finds its process from its `_ros2cli_<pid>` node name, sends it SIGINT (SIGKILL after 1.5 s) and sends zero speed. Any other node publishing `/drive` is named, not killed.
@@ -667,7 +680,7 @@ The obstacle stop runs on the robot: while anything drives the car forward throu
 
 **On the page.** The Controls card's Autonomous run panel; the stop zone drawn on the LiDAR views; the Autonomous indicator. The [Drive guide](docs/guides/drive-tab.md#autonomous-run) shows each.
 
-**To change.** `OBSTACLE_MARGIN_M`, `OBSTACLE_DECEL`, `OBSTACLE_HALF_WIDTH_M`, `OBSTACLE_MIN_POINTS` and `obstacle_verdict()` in `f1tenth_stack/system_diagnostics.py`; the run itself is in `dashboard/js/drive.js`.
+**To change.** `OBSTACLE_MARGIN_M`, `OBSTACLE_DECEL`, `OBSTACLE_HALF_WIDTH_M`, `OBSTACLE_MIN_POINTS` and `obstacle_verdict()` in `f1tenth_stack/system_diagnostics.py`; the run itself is in `dashboard/js/drive.js`; steering away is `AVOID` in `dashboard/js/avoid.js` (checked by `dashboard/tests/verify_avoid.mjs`) and `AVOID_SCAN_MAX_AGE_MS` in `drive.js`.
 
 ---
 
@@ -797,6 +810,7 @@ Apart from these, the page only reads. Each links to its full entry above.
 - **[Autonomous run](#autonomous-run-and-obstacle-stop)** publishes `/drive` at a set speed and steering; with a controller connected it drives only while R1 is held. **Stop autonomous** also stops a `ros2 topic pub /drive` on the car (SIGINT to that process).
 - **[Obstacle stop](#autonomous-run-and-obstacle-stop)** turns the emergency stop on when something ahead is inside the stopping distance while `/drive` drives forward.
 - **[Restart the dashboard on the car](#restart-the-dashboard-on-the-car)** stops and starts bringup again. Refused while the car could be moving.
+- **Controller top speed** ([Controller](#controller)) changes `joy_teleop`'s speed scale, so full stick on the physical controller drives at that speed (0.2 to 5.0 m/s). It is saved on the car and set again after restarts.
 - **Run joystick check** (Advanced tab, [Controller](#controller)) tells apart the three causes of a silent `/joy`: no controller, a working one, or one ROS has no permission to read.
 
 ## Changing things
@@ -855,6 +869,8 @@ and restart bringup. `--allow-overriding` is needed because `.bashrc` sources th
 
 **The controller is red with "add the user to the input group".** `sudo usermod -aG input $USER`, then log out and back in (shells already open, including one running bringup, keep their old groups).
 
+**A controller only blinks on PS and won't connect.** Pair it again on the car with Share + PS. If the car says "Pairing successful" and the controller hangs up about 5 s later, it is probably an off-brand pad stuck calling another computer: see [scripts/ds4-pair](../../scripts/ds4-pair/README.md).
+
 **FET (VESC) shows "no reading".** This car's VESC driver lacks the temperature patch (see [Known gaps](#known-gaps)).
 
 **The camera stays dark.** Check `camera_device` (`v4l2-ctl --list-devices`) and that nothing else, such as the `cam` alias, has the camera open.
@@ -866,6 +882,7 @@ and restart bringup. `--allow-overriding` is needed because `.bashrc` sources th
 - **rosbridge has no authentication.** Anyone who can reach port 9090 can publish to the robot, including `/drive`.
 - **rosbridge serves exactly 10 clients.** Number 11 connects and receives nothing, which looks like a dead robot; the page detects it and shows an orange bar. Every open dashboard tab is a client.
 - **The FET temperature needs a two-line VESC driver patch** (`temp_fet` and `temp_motor` copied into `/sensors/core`). It is not in `Weber-AGV/vesc` yet. The motor has no temperature sensor fitted and reads about -74 C, which the page treats as "no sensor".
+- **The controller's top speed needs a `teleop_tools` change** (live axis mappings in `joy_teleop`). It is not in `Weber-AGV/teleop_tools` yet; until it is, the page shows the speed but cannot change it.
 - **The controller's battery cannot be read.** The Jetson's kernel lacks the driver (`hid_sony`) that reports a PS4 controller's charge.
 - **Reboot detection cannot fire on a real reboot**, because a reboot restarts `system_diagnostics` too. An uptime of a few minutes that nobody expected is the sign; on these cars it usually means the battery dipped.
 

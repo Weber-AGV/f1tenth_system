@@ -1513,6 +1513,17 @@ body:has(.cockpit.full:not([hidden])) {
   margin: 2px 0;
 }
 
+/* room for "10.8 km/h", on one line, in every speed unit */
+.cockpit-panel .slider-row strong {
+  white-space: nowrap;
+}
+
+@media (min-width: 901px) {
+  .cockpit-panel .slider-row {
+    grid-template-columns: 92px 1fr minmax(76px, max-content);
+  }
+}
+
 .cockpit-pad-wrap {
   display: flex;
   flex-direction: column;
@@ -2011,8 +2022,8 @@ body:has(.cockpit.full:not([hidden])) {
 .speedo {
   position: relative;
   flex: none;
-  width: 96px;
-  height: 58px;
+  width: 132px;
+  height: 75px;
   display: grid;
   justify-items: center;
 }
@@ -2025,40 +2036,103 @@ body:has(.cockpit.full:not([hidden])) {
   overflow: visible;
 }
 
+.speedo-face {
+  fill: url(#speedoFace);
+  stroke: rgba(255, 255, 255, .09);
+  stroke-width: .75;
+}
+
+.speedo-ticks {
+  fill: none;
+  stroke: rgba(255, 255, 255, .34);
+  stroke-width: 1;
+  stroke-linecap: round;
+}
+
+.speedo-ticks-red {
+  stroke: #ff5147;
+}
+
+.speedo-seg,
 .speedo-track,
 .speedo-fill {
   fill: none;
   stroke-width: 9;
-  stroke-linecap: round;
+}
+
+/* one LED, one gap: a white stroke in the mask shows the arc through it */
+.speedo-seg {
+  stroke: #fff;
+  stroke-width: 11;
+  stroke-dasharray: 2.5 .9;
 }
 
 .speedo-track {
-  stroke: rgba(255, 255, 255, .14);
+  stroke: rgba(255, 255, 255, .13);
 }
 
 .speedo-fill {
-  stroke: var(--healthy);
+  stroke: url(#speedoHeat);
   stroke-dasharray: 0 100;
-  transition: stroke-dasharray .12s linear, stroke .2s;
+  transition: stroke-dasharray .12s linear;
 }
 
-.speedo.fast .speedo-fill    { stroke: var(--orange); }
+.speedo.reverse .speedo-fill {
+  stroke: url(#speedoCold);
+}
 
-.speedo.reverse .speedo-fill { stroke: #8ab4ff; }
+.speedo-glow {
+  filter: drop-shadow(0 0 2.5px rgba(255, 170, 60, .75));
+}
 
+.speedo.fast .speedo-glow {
+  filter: drop-shadow(0 0 4.5px rgba(255, 70, 40, .95));
+}
+
+.speedo.reverse .speedo-glow {
+  filter: drop-shadow(0 0 3px rgba(110, 150, 255, .85));
+}
+
+.speedo-head {
+  fill: #fff;
+  opacity: 0;
+  filter: drop-shadow(0 0 3px #fff);
+  transition: transform .12s linear, opacity .15s;
+}
+
+/* your command: a bright marker across the arc */
 .speedo-cmd {
-  stroke: var(--orange);
-  stroke-width: 3;
+  stroke: #fff;
+  stroke-width: 2.4;
   stroke-linecap: round;
+  filter: drop-shadow(0 0 2.5px var(--orange));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .speedo-fill,
+  .speedo-head {
+    transition: none;
+  }
 }
 
 .speedo-v {
   position: relative;
-  margin-top: 20px;
-  font-size: 20px;
+  margin-top: 31px;
+  font-size: 27px;
   font-weight: 900;
   line-height: 1;
   font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 10px rgba(255, 255, 255, .28);
+}
+
+.speedo.fast .speedo-v {
+  color: #ffb066;
+  text-shadow: 0 0 12px rgba(255, 90, 40, .75);
+}
+
+.speedo.reverse .speedo-v {
+  color: #b9d0ff;
+  text-shadow: 0 0 10px rgba(110, 150, 255, .6);
 }
 
 .speedo-u {
@@ -2071,7 +2145,7 @@ body:has(.cockpit.full:not([hidden])) {
 
 .speedo-max {
   position: absolute;
-  bottom: -12px;
+  bottom: -13px;
   font-size: 9px;
   opacity: .55;
   white-space: nowrap;
@@ -2085,7 +2159,7 @@ body:has(.cockpit.full:not([hidden])) {
   }
 
   .speedo-v {
-    margin-top: 15px;
+    margin-top: 18px;
     font-size: 16px;
   }
 
@@ -2605,7 +2679,7 @@ body:has(.cockpit.full:not([hidden])) {
 }
 
 .rail-speedo .speedo-v {
-  margin-top: 17px;
+  margin-top: 21px;
   font-size: 18px;
 }
 
@@ -2766,7 +2840,7 @@ body:has(.cockpit.full:not([hidden])) {
   }
 
   .rail-speedo .speedo-v {
-    margin-top: 14px;
+    margin-top: 17px;
     font-size: 16px;
   }
 
@@ -2940,6 +3014,39 @@ body:has(.cockpit.full:not([hidden])) {
   animation: auto-chip-pulse 1.2s ease-in-out infinite;
 }
 
+/* the button when a controller on the car means R1 starts the run */
+.auto-go:disabled {
+  background: rgba(255, 255, 255, .1);
+  color: #fff;
+  cursor: default;
+}
+
+/* R1 held: fills over the half second it takes (R1_HOLD_MS), so the press
+   shows at once rather than looking like nothing happened */
+.auto-go {
+  position: relative;
+  overflow: hidden;
+}
+
+.auto-go.r1-hold::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  background: var(--orange);
+  transform-origin: left;
+  animation: auto-r1-fill .5s linear forwards;
+}
+
+.auto-go.r1-hold {
+  isolation: isolate;
+}
+
+@keyframes auto-r1-fill {
+  from { transform: scaleX(0); }
+  to   { transform: scaleX(1); }
+}
+
 /* the panel's own switches: compact, on the panel's orange tint */
 .auto-panel .auto-switch {
   padding: 7px 10px;
@@ -3028,3 +3135,103 @@ body:has(.cockpit.full:not([hidden])) {
   }
 }
 
+/* ------------------------------------------------------------------
+   THE TOP BAR ON ONE LINE
+   ------------------------------------------------------------------ */
+
+/* the top bar on one line: status on the left, buttons on the right. Status
+   is what gives way, so a rare extra chip wraps there and is never cut off. */
+@media (min-width: 901px) {
+  .cockpit-status {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .cockpit-tools {
+    flex: none;
+    flex-wrap: nowrap;
+  }
+}
+
+/* messages get a line of their own, only while there is one to show */
+@media (min-width: 901px) and (not (pointer: coarse)) {
+  .cockpit-msgs {
+    flex: 1 1 100%;
+  }
+
+  .cockpit-msgs:not(:has(> :not([hidden]))) {
+    display: none;
+  }
+}
+
+/* not room for every word on most screens, so the longest fold away first.
+   Their full names stay in the tooltips. */
+@media (min-width: 901px) and (max-width: 1799px) {
+  .cockpit-status .fold-word {
+    display: none;
+  }
+}
+
+@media (min-width: 901px) and (max-width: 1699px) {
+  .cockpit-tools .top-btn:not(.recording) .btn-lbl {
+    display: none;
+  }
+
+  .cockpit-tools .estop-long {
+    display: none;
+  }
+
+  .cockpit-tools .estop-short {
+    display: inline;
+  }
+}
+
+/* the pane buttons' icons only appear when their words go */
+.pane-switch button .ic {
+  display: none;
+}
+
+@media (min-width: 901px) and (max-width: 1399px) {
+  .pane-switch .pane-word {
+    display: none;
+  }
+
+  .pane-switch button .ic {
+    display: inline-block;
+  }
+
+  .cockpit .pane-switch button {
+    padding: 0 10px;
+  }
+}
+
+/* the bottom bar's right end: who is driving and the latency */
+.cockpit-bottom-info {
+  display: none;
+}
+
+@media (min-width: 901px) and (not (pointer: coarse)) {
+  .cockpit-bottom-info {
+    grid-column: 3;
+    grid-row: 1;
+    justify-self: end;
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    align-items: center;
+    gap: 8px;
+  }
+}
+
+/* a short rail: the pane buttons share a row, so E-stop stays on screen */
+@container (max-height: 760px) {
+  .rail-group {
+    flex-direction: row;
+  }
+
+  .cockpit .rail-group .rail-btn {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+  }
+}

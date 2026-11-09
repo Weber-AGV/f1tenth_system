@@ -332,6 +332,18 @@ function setRail(side) {
   applyRail();
 }
 
+/* Who is driving and the latency: the bottom bar's empty right end on a
+   computer, the top bar on a phone, which has no bottom bar. */
+function placeBottomChips() {
+  const home = cockpitTouchLayout()
+    ? document.querySelector(".cockpit-status")
+    : $("cockpitBottomInfo");
+  home.append($("cockpitLatency"), $("cockpitWho"));
+}
+
+placeBottomChips();
+window.matchMedia(COCKPIT_TOUCH_QUERY).addEventListener("change", placeBottomChips);
+
 function applyRail() {
 
   const side = railActive() ? railSide() : "off";
@@ -1346,20 +1358,7 @@ function renderCockpitSys() {
       </div>` : "");
 }
 
-/* Speed units for the speedometer and the readout (the limits stay in
-   m/s, as the car's own settings are). Kept per browser. */
-const SPEED_UNITS = {
-  mps: { label: "m/s", factor: 1, digits: 2 },
-  kmh: { label: "km/h", factor: 3.6, digits: 1 },
-  mph: { label: "mph", factor: 2.23694, digits: 1 }
-};
-
-let speedUnit = "mps";
-
-try {
-  speedUnit = SPEED_UNITS[localStorage.getItem("cockpitUnits")] ? localStorage.getItem("cockpitUnits") : "mps";
-} catch (error) {}
-
+/* Settings > Readouts: the unit for every speed on the page (helpers.js) */
 function setSpeedUnit(unit) {
   speedUnit = SPEED_UNITS[unit] ? unit : "mps";
   try {
@@ -1367,12 +1366,33 @@ function setSpeedUnit(unit) {
   } catch (error) {}
   document.querySelectorAll("[data-speed-unit]").forEach(button =>
     button.setAttribute("aria-pressed", String(button.dataset.speedUnit === speedUnit)));
+
+  /* text that is not redrawn on its own; the live readouts catch up by themselves */
+  document.querySelectorAll("[data-mps]").forEach(element => {
+    element.textContent = speedLimitText(Number(element.dataset.mps));
+  });
+  renderSpeedUnlock();
+  renderLimits();
+  renderAutoPanel();
+  renderControllerSpeed();
+  syncCockpitSettings();
 }
 
-function speedText(mps, digits = SPEED_UNITS[speedUnit].digits) {
-  const unit = SPEED_UNITS[speedUnit];
-  return (mps * unit.factor).toFixed(digits) + " " + unit.label;
-}
+/* The scale's tick marks, drawn once: the last ones red, near the limit. */
+(function drawSpeedoTicks() {
+  const line = (share, inner) => {
+    const angle = Math.PI * (1 - share);
+    const at = r => (60 + Math.cos(angle) * r).toFixed(1) + " " + (62 - Math.sin(angle) * r).toFixed(1);
+    return `M ${at(inner)} L ${at(41)} `;
+  };
+  let calm = "", hot = "";
+  for (let i = 0; i <= 20; i++) {
+    const d = line(i / 20, i % 5 === 0 ? 34 : 38);
+    if (i >= 17) hot += d; else calm += d;
+  }
+  $("speedoTicks").setAttribute("d", calm);
+  $("speedoTicksRed").setAttribute("d", hot);
+})();
 
 /* Speedometer: measured speed as the arc (the command until /odom
    reports), the command as a tick, scaled to the max-speed limit. */
@@ -1385,16 +1405,23 @@ function renderSpeedo() {
 
   $("speedoFill").style.strokeDasharray = `${share(shown) * 100} 100`;
 
+  /* the bright tip rides the end of the arc */
+  const tip = Math.PI * (1 - share(shown));
+  $("speedoHead").style.transform =
+    `translate(${(60 + Math.cos(tip) * 50).toFixed(1)}px, ${(62 - Math.sin(tip) * 50).toFixed(1)}px)`;
+  $("speedoHead").style.opacity = share(shown) > 0.01 ? 1 : 0;
+
   /* the tick sits on the arc: left end is 0, right end is the limit */
   const angle = Math.PI * (1 - share(cmdSpeed));
   const point = r => [60 + Math.cos(angle) * r, 62 - Math.sin(angle) * r];
-  const [x1, y1] = point(41);
-  const [x2, y2] = point(59);
+  const [x1, y1] = point(43);
+  const [x2, y2] = point(60);
 
   $("speedoCmd").setAttribute("x1", x1.toFixed(1));
   $("speedoCmd").setAttribute("y1", y1.toFixed(1));
   $("speedoCmd").setAttribute("x2", x2.toFixed(1));
   $("speedoCmd").setAttribute("y2", y2.toFixed(1));
+  $("speedoCmd").style.opacity = Math.abs(cmdSpeed) > 0.01 ? 1 : 0;
 
   const unit = SPEED_UNITS[speedUnit];
 

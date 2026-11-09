@@ -6,6 +6,39 @@
    HELPERS
 ========================================================== */
 
+/* Every speed on the page shows in the unit chosen in Settings > Readouts.
+   The car and the sliders always work in m/s; only the text changes. Kept
+   per browser. */
+const SPEED_UNITS = {
+  mps: { label: "m/s", spoken: "metres per second", factor: 1, digits: 2 },
+  kmh: { label: "km/h", spoken: "kilometres per hour", factor: 3.6, digits: 1 },
+  mph: { label: "mph", spoken: "miles per hour", factor: 2.23694, digits: 1 }
+};
+
+let speedUnit = "mps";
+
+try {
+  const savedUnit = localStorage.getItem("cockpitUnits");
+  if (SPEED_UNITS[savedUnit]) speedUnit = savedUnit;
+} catch (error) {}
+
+function speedNumber(mps, digits = SPEED_UNITS[speedUnit].digits) {
+  return (mps * SPEED_UNITS[speedUnit].factor).toFixed(digits);
+}
+
+function speedText(mps, digits) {
+  return speedNumber(mps, digits) + " " + SPEED_UNITS[speedUnit].label;
+}
+
+/* a fixed limit in a sentence: "3 m/s", "10.8 km/h" */
+function speedLimitText(mps) {
+  return speedText(mps, 1).replace(".0 ", " ");
+}
+
+function speedSpoken(mps) {
+  return speedNumber(mps, 1) + " " + SPEED_UNITS[speedUnit].spoken;
+}
+
 function escapeHtml(value) {
   return String(value)
     .replaceAll("&", "&amp;")

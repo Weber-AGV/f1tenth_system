@@ -364,10 +364,6 @@ function getSpeedMetric() {
   const speedMps =
     robotSpeedMps;
 
-  const speedMph =
-    Math.abs(speedMps) *
-    2.23694;
-
   /* --------------------------------------------------------
      Determine direction.
   -------------------------------------------------------- */
@@ -397,8 +393,6 @@ function getSpeedMetric() {
   /*
      Visual gauge only.
 
-     3 m/s is approximately 6.7 MPH.
-
      This does NOT determine the robot's actual speed.
   */
 
@@ -419,14 +413,12 @@ function getSpeedMetric() {
     sub: direction,
 
     value:
-      speedMph.toFixed(2) +
-      " MPH",
+      speedText(speedMps),
 
     pct,
 
     note:
-      speedMps.toFixed(2) +
-      " m/s · /odom",
+      "/odom",
 
     grade: "ok"
   };

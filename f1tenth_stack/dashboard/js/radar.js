@@ -525,7 +525,7 @@ function drawRadarScan(canvas, scaleState, selLo, selHi) {
       const status = o.distance < RADAR.danger ? "danger" : o.distance < RADAR.warn ? "warn" : "clear";
       const fill = { danger: c.danger, warn: c.warn, clear: "#1f2a3c" }[status];
       const ink = status === "warn" ? "#1a1400" : "#fff";
-      const text = `${o.number}  ${o.distance.toFixed(2)} m` + (o.approach ? `  \u25BC ${o.approach.toFixed(1)} m/s` : "");
+      const text = `${o.number}  ${o.distance.toFixed(2)} m` + (o.approach ? `  \u25BC ${speedText(o.approach, 1)}` : "");
       ctx.font = `700 ${Math.round(font * 0.82)}px system-ui, sans-serif`;
       const tw = ctx.measureText(text).width;
       const bw = tw + 12 * px;
@@ -609,7 +609,7 @@ function radarHover(ctx, result, ranges, g, reach, P, ox, oy, ppm, hover, font) 
       (object.number ? `Object ${object.number}` : "Object") + ` · ${RADAR_WORD[status]}`,
       `${object.distance.toFixed(2)} m · ${radarBearing(object.angle)}`,
       `width ${object.width.toFixed(2)} m · ${object.points.length} points`,
-      object.approach ? `approaching at ${object.approach.toFixed(1)} m/s` : "not approaching"
+      object.approach ? `approaching at ${speedText(object.approach, 1)}` : "not approaching"
     ];
     const q = P(object.angle, object.distance);
     ctx.strokeStyle = "#ffffff";
@@ -747,7 +747,7 @@ function renderRadarPanel(now) {
       <li class="${radarStatusOf(o.distance)}">
         <span class="ro-num">${o.number}</span>
         <span><b>${o.distance.toFixed(2)} m</b>, ${radarBearing(o.angle)}, width ${o.width.toFixed(2)} m${
-          o.approach ? ` <em class="ro-approach">▼ approaching ${o.approach.toFixed(1)} m/s</em>` : ""}</span>
+          o.approach ? ` <em class="ro-approach">▼ approaching ${speedText(o.approach, 1)}</em>` : ""}</span>
       </li>`).join("")
     : `<li class="none">${fresh ? "Nothing detected" : "—"}</li>`;
 

@@ -44,7 +44,8 @@ try:
     from rclpy.executors import MultiThreadedExecutor
     from rclpy.node import Node
     from ackermann_msgs.msg import AckermannDriveStamped
-    from rcl_interfaces.msg import SetParametersResult
+    from rcl_interfaces.msg import Parameter, ParameterType, ParameterValue, SetParametersResult
+    from rcl_interfaces.srv import GetParameters, SetParameters
     from rclpy.qos import qos_profile_sensor_data
     from sensor_msgs.msg import Joy, LaserScan
     from std_msgs.msg import Bool, Float64
@@ -396,6 +397,68 @@ def other_drive_nodes(publisher_nodes):
                    and not re.search(r"rosbridge|system_diagnostics", n)})
 
 
+# ---------- controller top speed (Controller tab, bottom-right popup) ----------
+#
+# The PS4's top speed is joy_teleop's speed scale: full stick times
+# human_control's drive-speed scale in config/joy_teleop.yaml = m/s. A
+# joy_teleop with live axis mappings (teleop_tools) applies a new scale at
+# once. The page sets controller_max_speed here; this node saves it to a file
+# and keeps joy_teleop on it, also after joy_teleop restarts (bringup, the
+# page's Restart, a reboot). An older joy_teleop reads the scale once at start
+# and would accept a new value without using it, so it is only set when the
+# installed joy_teleop is the live one.
+CONTROLLER_SPEED_PARAM = "human_control.axis_mappings.drive-speed.scale"
+CONTROLLER_SPEEDS = (0.2, 5.0)          # m/s the page may set
+CONTROLLER_SPEED_FILE = os.path.expanduser("~/.ros/controller_max_speed")
+CONTROLLER_SYNC_S = 2.0                 # how often joy_teleop is checked
+
+
+def controller_scale_for(want, current):
+    """
+    Return the scale that makes full stick `want` m/s.
+
+    None if it already does, nothing is wanted, or joy_teleop's scale is
+    unknown. Keeps the sign of the current scale, so an inverted stick stays
+    inverted.
+    """
+    if want is None or current is None or abs(abs(current) - want) < 1e-6:
+        return None
+    return math.copysign(want, current) if current else want
+
+
+def load_controller_speed(path=CONTROLLER_SPEED_FILE):
+    """Return the saved top speed in m/s, or None if none is saved (or it is bad)."""
+    try:
+        with open(path) as f:
+            value = float(f.read().strip())
+    except (OSError, ValueError):
+        return None
+    lo, hi = CONTROLLER_SPEEDS
+    return value if lo <= value <= hi else None
+
+
+def save_controller_speed(value, path=CONTROLLER_SPEED_FILE):
+    os.makedirs(os.path.dirname(path), exist_ok=True)
+    with open(path + ".tmp", "w") as f:
+        f.write(f"{value:.2f}\n")
+    os.replace(path + ".tmp", path)
+
+
+def joy_teleop_live():
+    """Tell whether the installed joy_teleop applies axis-mapping changes at once."""
+    # ponytail: looks for the callback's name in the installed source; a
+    # joy_teleop parameter that says so would need another teleop_tools change.
+    for prefix in os.environ.get("AMENT_PREFIX_PATH", "").split(":"):
+        for path in glob.glob(os.path.join(prefix, "lib", "python3*", "site-packages",
+                                           "joy_teleop", "joy_teleop.py")):
+            try:
+                with open(path) as f:
+                    return "set_axis_mapping_parameters" in f.read()
+            except OSError:
+                pass
+    return False
+
+
 # ---------- obstacle stop ----------
 #
 # While something drives the car FORWARD through /drive - the page's
@@ -616,7 +679,22 @@ class SystemDiagnostics(Node):
         # e-stop's group, so a trip and the hold never interleave.
         self.declare_parameter("obstacle_stop", True)
         self.declare_parameter("obstacle_margin", OBSTACLE_MARGIN_M)
+        # before the callback, which refuses 0.0 ("none saved") from the page
+        self.controller_want = load_controller_speed()
+        self.declare_parameter("controller_max_speed", self.controller_want or 0.0)
         self.add_on_set_parameters_callback(self.on_set_parameters)
+
+        # Controller top speed: saved here, kept on joy_teleop. Its own group,
+        # so a slow joy_teleop never holds up anything else.
+        self.teleop_live = joy_teleop_live()
+        self.teleop_scale = None        # joy_teleop's scale as last read
+        teleop_group = MutuallyExclusiveCallbackGroup()
+        self.teleop_get = self.create_client(GetParameters, "/joy_teleop/get_parameters",
+                                             callback_group=teleop_group)
+        self.teleop_set = self.create_client(SetParameters, "/joy_teleop/set_parameters",
+                                             callback_group=teleop_group)
+        self.create_timer(CONTROLLER_SYNC_S, self.controller_speed_sync,
+                          callback_group=teleop_group)
         self.drive_frame = ""
         self.scan_at = None             # monotonic time of the newest scan
         self.ahead = None               # nearest_ahead() of it
@@ -923,10 +1001,88 @@ class SystemDiagnostics(Node):
             if p.name == "obstacle_stop" and not isinstance(p.value, bool):
                 return SetParametersResult(successful=False,
                                            reason="obstacle_stop is true or false")
+            if p.name == "controller_max_speed":
+                lo, hi = CONTROLLER_SPEEDS
+                if isinstance(p.value, bool) or not isinstance(p.value, (int, float)) \
+                        or not lo <= p.value <= hi:
+                    return SetParametersResult(
+                        successful=False, reason=f"controller_max_speed must be {lo} to {hi} m/s")
+                if not self.teleop_live:
+                    return SetParametersResult(
+                        successful=False, reason="this car's joy_teleop cannot change speed "
+                        "while running: it needs the teleop_tools update")
         for p in params:
             if p.name in ("obstacle_stop", "obstacle_margin"):
                 self.get_logger().warn(f"obstacle stop: {p.name} set to {p.value}")
+            if p.name == "controller_max_speed":
+                self.controller_want = float(p.value)
+                try:
+                    save_controller_speed(self.controller_want)
+                except OSError as e:
+                    self.get_logger().warn(f"controller speed: could not save it ({e})")
+                self.get_logger().warn(f"controller speed: top speed set to {p.value:.2f} m/s")
+                self.controller_speed_sync()
         return SetParametersResult(successful=True)
+
+    # ---------- controller top speed ----------
+
+    def controller_speed_sync(self):
+        """Read joy_teleop's scale; set it to the saved speed if they differ."""
+        if not self.teleop_get.service_is_ready():
+            self.teleop_scale = None
+            return
+        request = GetParameters.Request(names=[CONTROLLER_SPEED_PARAM])
+        self.teleop_get.call_async(request).add_done_callback(self.on_teleop_scale)
+
+    def on_teleop_scale(self, future):
+        try:
+            value = future.result().values[0]
+        except Exception:  # noqa: BLE001 - no answer, or no such parameter
+            self.teleop_scale = None
+            return
+        if value.type == ParameterType.PARAMETER_DOUBLE:
+            self.teleop_scale = value.double_value
+        elif value.type == ParameterType.PARAMETER_INTEGER:
+            self.teleop_scale = float(value.integer_value)
+        else:
+            self.teleop_scale = None
+        target = controller_scale_for(self.controller_want, self.teleop_scale)
+        if target is None or not self.teleop_live:
+            return
+        request = SetParameters.Request(parameters=[Parameter(
+            name=CONTROLLER_SPEED_PARAM,
+            value=ParameterValue(type=ParameterType.PARAMETER_DOUBLE, double_value=target))])
+        self.teleop_set.call_async(request).add_done_callback(
+            lambda f: self.on_teleop_set(f, target))
+
+    def on_teleop_set(self, future, target):
+        try:
+            result = future.result().results[0]
+        except Exception as e:  # noqa: BLE001
+            self.get_logger().warn(f"controller speed: joy_teleop did not answer ({e})")
+            return
+        if result.successful:
+            self.teleop_scale = target
+            self.get_logger().info(f"controller speed: joy_teleop now {abs(target):.2f} m/s")
+        else:
+            self.get_logger().warn(f"controller speed: joy_teleop refused ({result.reason})")
+
+    def controller_speed_status(self):
+        lo, hi = CONTROLLER_SPEEDS
+        now = None if self.teleop_scale is None else abs(self.teleop_scale)
+        want = self.controller_want
+        vals = [("max m/s", "unknown" if now is None else f"{now:.2f}"),
+                ("saved m/s", "none" if want is None else f"{want:.2f}"),
+                ("live", "yes" if self.teleop_live else "no"),
+                ("range m/s", f"{lo:g} to {hi:g}")]
+        if now is None:
+            text = "joy_teleop is not answering"
+        elif not self.teleop_live:
+            text = (f"full stick {now:.1f} m/s; "
+                    "this car's joy_teleop cannot change it while running")
+        else:
+            text = f"full stick {now:.1f} m/s"
+        return status("system: Controller speed", OK, text, vals)
 
     def on_scan(self, msg):
         self.scan_at = time.monotonic()
@@ -1427,7 +1583,7 @@ class SystemDiagnostics(Node):
         msg = DiagnosticArray()
         msg.header.stamp = self.get_clock().now().to_msg()
         for build in (self.estop_status, self.drive_status, self.obstacle_status,
-                      self.thermal, self.cpu, self.gpu,
+                      self.controller_speed_status, self.thermal, self.cpu, self.gpu,
                       self.memory, self.storage, self.power, self.vesc_device,
                       self.network, self.gamepad, self.camera, self.clock):
             try:
@@ -1593,6 +1749,23 @@ def self_test():
     assert "right at the LiDAR" in obstacle_verdict(**go, ahead=0.0), "a hand beside it"
     assert "0.30 m ahead" in obstacle_verdict(**go, ahead=0.3)
     print("obstacle stop self-test passed")
+
+    assert controller_scale_for(2.0, 5.0) == 2.0
+    assert controller_scale_for(2.0, -5.0) == -2.0, "an inverted stick stays inverted"
+    assert controller_scale_for(2.0, 2.0) is None, "already there"
+    assert controller_scale_for(None, 5.0) is None, "nothing saved: leave the yaml's value"
+    assert controller_scale_for(2.0, None) is None, "joy_teleop unknown"
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        path = os.path.join(d, "sub", "speed")
+        assert load_controller_speed(path) is None
+        save_controller_speed(1.5, path)
+        assert load_controller_speed(path) == 1.5
+        for bad in ("fast\n", "9.0\n", ""):
+            with open(path, "w") as f:
+                f.write(bad)
+            assert load_controller_speed(path) is None, bad
+    print("controller speed self-test passed")
 
 
 def main():

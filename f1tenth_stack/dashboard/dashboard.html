@@ -15,15 +15,17 @@
   } catch (error) {}
 </script>
 
+<!-- The ?v= on every stylesheet and script makes browsers fetch the new file
+     after an update: change it (the same in all of them) when these change. -->
 <!-- One stylesheet per area of the page, loaded in this order (later
      files may override earlier ones). css/README.md says what is where. -->
-<link rel="stylesheet" href="css/base.css">      <!-- colours, reset, icons, shared buttons -->
-<link rel="stylesheet" href="css/topbar.css">    <!-- top bar, emergency stop, status banner, tabs, footer -->
-<link rel="stylesheet" href="css/overview.css">  <!-- Overview tab, the LiDAR card and its radar panel -->
-<link rel="stylesheet" href="css/drive.css">     <!-- the Drive tab's own cards and the unlock dialogs -->
-<link rel="stylesheet" href="css/advanced.css">  <!-- Advanced tab -->
-<link rel="stylesheet" href="css/controller.css"> <!-- Controller tab: the PS4 controller, live -->
-<link rel="stylesheet" href="css/cockpit.css">   <!-- the driving view: Drive tab and full screen -->
+<link rel="stylesheet" href="css/base.css?v=20261109f">      <!-- colours, reset, icons, shared buttons -->
+<link rel="stylesheet" href="css/topbar.css?v=20261109f">    <!-- top bar, emergency stop, status banner, tabs, footer -->
+<link rel="stylesheet" href="css/overview.css?v=20261109f">  <!-- Overview tab, the LiDAR card and its radar panel -->
+<link rel="stylesheet" href="css/drive.css?v=20261109f">     <!-- the Drive tab's own cards and the unlock dialogs -->
+<link rel="stylesheet" href="css/advanced.css?v=20261109f">  <!-- Advanced tab -->
+<link rel="stylesheet" href="css/controller.css?v=20261109f"> <!-- Controller tab: the PS4 controller, live -->
+<link rel="stylesheet" href="css/cockpit.css?v=20261109f">   <!-- the driving view: Drive tab and full screen -->
 </head>
 
 <body>
@@ -77,6 +79,11 @@
       <button type="button" data-theme-choice="dark" title="Dark mode"><i data-icon="moon"></i> Dark</button>
     </div>
 
+    <!-- Steam Deck only (?deck=1, from open_dashboard.sh): kiosk mode
+         has no window controls, so the page closes itself (main.js) -->
+    <button class="top-btn" type="button" data-quit hidden
+            title="Close the dashboard"><i data-icon="power"></i> Close</button>
+
     <!-- stops the car for EVERYONE — controller, this page, autonomous.
          Last in the bar and set apart, so it is always in the same
          corner and never hit on the way to Refresh. -->
@@ -93,6 +100,14 @@
 
 <!-- a short message about what just happened (stopping autonomous code) -->
 <div class="toast" id="toast" role="status" hidden></div>
+
+<!-- the car's PS4 top speed (controller-speed.js fills every data-cspeed):
+     the Drive tab's top bar and side rail, and the chip in the footer on the
+     other tabs, open this popup; the same control is on the Controller tab
+     and in the phone Limits drawer -->
+<div class="cspeed-pop" id="cspeedPop" role="dialog" aria-label="PS4 controller top speed" hidden>
+  <div class="cspeed" data-cspeed></div>
+</div>
 
 <!-- restarting the dashboard on the car (checks.js): waits for the car to
      come back, then reloads this page -->
@@ -618,7 +633,7 @@
 
               <!-- only while a controller is connected; PS button reconnects it -->
               <div class="pad-disconnect" id="padDisconnectRow" hidden>
-                <button class="pad-disconnect-btn" id="padDisconnectBtn" type="button"><i data-icon="gamepad"></i> Disconnect controller</button>
+                <button class="pad-disconnect-btn" id="padDisconnectBtn" type="button"><i data-icon="gamepad"></i> Disconnect<span class="fold-word"> controller</span></button>
                 <span class="pad-disconnect-note" id="padDisconnectNote" role="status"></span>
               </div>
 
@@ -654,7 +669,7 @@
           </label>
 
           <button class="top-btn warn-btn" id="speedUnlockBtn" type="button">
-            <i data-icon="alert"></i> Unlock high speed (up to 5 m/s)
+            <i data-icon="alert"></i> Unlock high speed
           </button>
 
           <button class="top-btn warn-btn" id="steerUnlockBtn" type="button">
@@ -662,7 +677,7 @@
           </button>
 
           <div class="card-hint">
-            Normal limits are 3 m/s and 19°.
+            Normal limits are <span data-mps="3">3 m/s</span> and 19°.
             <span class="info-tip" tabindex="0"
                   title="Publishes ackermann_msgs/AckermannDriveStamped on /drive at 20 Hz"><i data-icon="info"></i></span>
           </div>
@@ -834,8 +849,8 @@
     <h2 id="speedDialogTitle"><i data-icon="alert"></i> Unlock high speed?</h2>
 
     <p>
-      This raises the speed limit from <strong>3 m/s</strong> to
-      <strong>5 m/s</strong> (about 18 km/h, 11 mph). At that speed:
+      This raises the speed limit from <strong data-mps="3">3 m/s</strong> to
+      <strong data-mps="5">5 m/s</strong> (about 18 km/h, 11 mph). At that speed:
     </p>
 
     <ul>
@@ -844,7 +859,7 @@
       <li>If Wi-Fi drops, the car keeps its last speed until the motor
         controller times out (about 1 s, not yet measured) — up to
         <strong>5 m with nobody in control</strong>.</li>
-      <li>The car's motor controller (VESC) may cap speed lower than 5 m/s.
+      <li>The car's motor controller (VESC) may cap speed lower than <span data-mps="5">5 m/s</span>.
         This page cannot go past that limit.</li>
     </ul>
 
@@ -865,7 +880,7 @@
     <div class="speed-actions">
       <button class="top-btn" id="speedCancel" type="button">Cancel</button>
       <button class="top-btn warn-btn" id="speedConfirm" type="button" disabled>
-        Unlock up to 5 m/s
+        Unlock up to <span data-mps="5">5 m/s</span>
       </button>
     </div>
 
@@ -1341,6 +1356,8 @@
         <div class="jp-sub">Sticks and triggers</div>
         <div class="jp-axes" id="jpAxes"></div>
 
+        <div class="cspeed cspeed-inline" data-cspeed></div>
+
         <div class="jp-sub" id="jpRawTitle">Raw /joy</div>
         <div class="jp-raw">
           <div><span class="jp-raw-k">buttons[ ]</span><span class="jp-raw-v" id="jpRawButtons"></span></div>
@@ -1402,6 +1419,13 @@
       <strong id="robotIp">unknown</strong>
     </span>
 
+    <button class="cspeed-chip" id="cspeedChip" type="button" data-cspeed-chip
+            aria-expanded="false" aria-controls="cspeedPop" title="Change the PS4 controller's top speed" hidden>
+      <i data-icon="gamepad"></i>
+      <span>PS4 top speed</span>
+      <strong data-cspeed-value>--</strong>
+    </button>
+
   </div>
 
 </footer>
@@ -1417,14 +1441,26 @@
       <span class="drive-state" id="cockpitState">DISARMED</span>
       <span class="viewer-health" id="cockpitHealth" data-health="unknown">UNKNOWN</span>
       <span class="hud-chip" id="cockpitBattery"><i data-icon="battery"></i> --.- V</span>
-      <!-- round trip to the car: every command pays about half of it -->
-      <span class="hud-chip latency-chip" id="cockpitLatency" hidden></span>
       <span class="hud-chip hud-fast" id="cockpitSpeedMode" hidden><i data-icon="alert"></i> HIGH SPEED</span>
       <span class="hud-chip hud-fast" id="cockpitSteerMode" hidden><i data-icon="alert"></i> FULL STEERING</span>
       <span class="hud-chip" id="cockpitPadChip"></span>
       <!-- only while a controller is connected; its PS button reconnects it -->
-      <button class="top-btn cockpit-pad-off" id="cockpitPadDisconnect" type="button" hidden></button>
-      <span class="hud-chip who-chip" id="cockpitWho" data-tone=""></span>
+      <button class="top-btn cockpit-pad-off" id="cockpitPadDisconnect" type="button" aria-label="Disconnect controller" hidden></button>
+      <!-- the PS4's top speed, always in view while driving: - and + change
+           it, the middle opens the slider (controller-speed.js) -->
+      <div class="cspeed-bar" role="group" aria-label="PS4 controller top speed" data-cspeed-bar>
+        <button class="cspeed-step" type="button" data-cspeed-step="-1"
+                aria-label="Lower the PS4 controller's top speed">&minus;</button>
+        <button class="cspeed-bar-open" type="button" data-cspeed-chip
+                aria-expanded="false" aria-controls="cspeedPop" title="Open the slider">
+          <i data-icon="gamepad"></i>
+          <span class="cspeed-bar-label">PS4 top speed</span>
+          <strong data-cspeed-value>--</strong>
+          <i data-icon="chevronDown"></i>
+        </button>
+        <button class="cspeed-step" type="button" data-cspeed-step="1"
+                aria-label="Raise the PS4 controller's top speed">+</button>
+      </div>
       <!-- autonomous code: driving (red, pulsing) or standing by -->
       <button class="hud-chip auto-chip" id="cockpitAuto" type="button" data-auto-stop hidden></button>
       <!-- armed with the controls closed: the keys still drive -->
@@ -1445,9 +1481,9 @@
     <div class="cockpit-tools">
       <!-- which panes show; on phones Camera and LiDAR take turns -->
       <div class="range-switch pane-switch" role="group" aria-label="Panes">
-        <button type="button" data-pane-toggle="camera">Camera</button>
-        <button type="button" data-pane-toggle="lidar">LiDAR</button>
-        <button type="button" data-pane-toggle="controls">Controls</button>
+        <button type="button" data-pane-toggle="camera" title="Camera" aria-label="Camera"><i data-icon="camera"></i><span class="pane-word">Camera</span></button>
+        <button type="button" data-pane-toggle="lidar" title="LiDAR" aria-label="LiDAR"><i data-icon="radar"></i><span class="pane-word">LiDAR</span></button>
+        <button type="button" data-pane-toggle="controls" title="Controls" aria-label="Controls"><i data-icon="joystick"></i><span class="pane-word">Controls</span></button>
       </div>
       <!-- phones: arming and the limits drawer live here -->
       <button class="top-btn cockpit-arm-quick" id="cockpitArmQuick" type="button">Arm</button>
@@ -1464,6 +1500,9 @@
       <button class="top-btn cockpit-full-btn" id="cockpitGoFull" type="button"
               title="Full screen (Esc to leave)"><i data-icon="maximize"></i><span class="btn-lbl"> Full screen</span></button>
       <button class="top-btn cockpit-exit-btn" id="cockpitClose" type="button" title="Leave full screen (Esc) - disarms"><i data-icon="x"></i> Exit</button>
+      <!-- Steam Deck only: closes the dashboard itself (main.js) -->
+      <button class="top-btn" type="button" data-quit hidden
+              title="Close the dashboard"><i data-icon="power"></i><span class="btn-lbl"> Close</span></button>
 
       <!-- one tap: tuck the bar away (the corner keeps E-stop and Show) -->
       <button class="top-btn cockpit-icon-btn" id="cockpitBarHideBtn" type="button"
@@ -1504,6 +1543,20 @@
     <!-- the speedometer moves here from the bottom bar -->
     <div class="rail-speedo" id="railSpeedoSlot"></div>
     <span class="rail-who" id="railWho"></span>
+    <!-- the PS4's top speed, the same - and + as the top bar's -->
+    <div class="cspeed-side" role="group" aria-label="PS4 controller top speed" data-cspeed-bar>
+      <button class="cspeed-side-open" type="button" data-cspeed-chip
+              aria-expanded="false" aria-controls="cspeedPop" title="Open the slider">
+        <span class="cspeed-side-label"><i data-icon="gamepad"></i> PS4 top speed</span>
+        <strong data-cspeed-value>--</strong>
+      </button>
+      <div class="cspeed-side-steps">
+        <button class="cspeed-step" type="button" data-cspeed-step="-1"
+                aria-label="Lower the PS4 controller's top speed">&minus;</button>
+        <button class="cspeed-step" type="button" data-cspeed-step="1"
+                aria-label="Raise the PS4 controller's top speed">+</button>
+      </div>
+    </div>
     <button class="rail-auto auto-chip" id="railAuto" type="button" data-auto-stop hidden></button>
 
     <div class="rail-group" role="group" aria-label="Panes">
@@ -1788,6 +1841,10 @@
           </div>
 
           <div class="auto-panel" id="autoPanel">
+            <!-- first, so starting and stopping never needs scrolling -->
+            <button class="auto-go" id="autoStart" type="button">Start autonomous run</button>
+            <div class="auto-status" id="autoStatus" role="status"></div>
+
             <p class="auto-warn">The car drives itself at this speed and steering, with
               nothing held, until you stop it or the time is up. STOP, Space or
               Emergency stop end it; so does leaving this page.</p>
@@ -1806,6 +1863,14 @@
                 <span id="autoR1Sub">Hold R1 on the controller for half a second to start; let go to stop.</span>
               </span>
               <input type="checkbox" id="autoR1" role="switch">
+            </label>
+
+            <label class="cockpit-switch auto-switch">
+              <span class="cockpit-switch-text">
+                <strong>Steer away from obstacles</strong>
+                <span>Uses the LiDAR: if something is ahead, the run turns toward the roomier side.</span>
+              </span>
+              <input type="checkbox" id="autoAvoid" role="switch" checked>
             </label>
 
             <div class="auto-guard" id="autoGuard">
@@ -1851,8 +1916,6 @@
               <button class="link-btn" id="autoZero" type="button" title="Speed 0, steering straight">Reset</button>
             </div>
 
-            <button class="auto-go" id="autoStart" type="button">Start autonomous run</button>
-            <div class="auto-status" id="autoStatus" role="status"></div>
           </div>
 
           <div class="cockpit-pad-wrap">
@@ -1871,7 +1934,14 @@
 
           <!-- limits: always in view while driving -->
           <div class="cockpit-limits" id="cockpitMore">
+          <div class="cockpit-limits-group">
+            <div class="cspeed" data-cspeed></div>
+          </div>
+
           <div class="cockpit-limits-head">Limits <span class="cockpit-more-sum" id="cockpitMoreSum"></span></div>
+
+          <!-- the PS4's top speed is above; these limit this page only -->
+          <div class="cockpit-limits-sub">Pad and keys on this page</div>
 
           <label class="slider-row">
             <span>Max speed</span>
@@ -1938,13 +2008,51 @@
   <!-- the computer's numbers, and the command / steering readout -->
   <div class="cockpit-bottom">
     <div class="cockpit-sys" id="cockpitSys"></div>
+    <!-- who is driving and the round trip to the car (every command pays
+         about half of it). A phone has no bottom bar, so cockpit.js moves
+         these to its top bar. -->
+    <div class="cockpit-bottom-info" id="cockpitBottomInfo">
+      <span class="hud-chip latency-chip" id="cockpitLatency" hidden></span>
+      <span class="hud-chip who-chip" id="cockpitWho" data-tone=""></span>
+    </div>
   <div class="cockpit-hud">
     <!-- speedometer: measured speed as the arc, your command as the
          orange tick, the scale up to your max-speed limit -->
     <div class="speedo" id="cockpitSpeedo" aria-label="Speed">
       <svg viewBox="0 0 120 68" aria-hidden="true">
-        <path class="speedo-track" d="M 10 62 A 50 50 0 0 1 110 62" pathLength="100"/>
-        <path class="speedo-fill" id="speedoFill" d="M 10 62 A 50 50 0 0 1 110 62" pathLength="100"/>
+        <defs>
+          <!-- left to right along the arc: calm, then hot near the limit -->
+          <linearGradient id="speedoHeat" gradientUnits="userSpaceOnUse" x1="10" y1="0" x2="110" y2="0">
+            <stop offset="0" stop-color="#2fe08a"/>
+            <stop offset=".55" stop-color="#ffd23f"/>
+            <stop offset=".8" stop-color="#ff7900"/>
+            <stop offset="1" stop-color="#ff3b30"/>
+          </linearGradient>
+          <linearGradient id="speedoCold" gradientUnits="userSpaceOnUse" x1="10" y1="0" x2="110" y2="0">
+            <stop offset="0" stop-color="#8ab4ff"/>
+            <stop offset="1" stop-color="#4f7cff"/>
+          </linearGradient>
+          <radialGradient id="speedoFace" cx="60" cy="62" r="56" gradientUnits="userSpaceOnUse">
+            <stop offset="0" stop-color="#1c222b"/>
+            <stop offset="1" stop-color="#0b0d10"/>
+          </radialGradient>
+          <!-- cuts the arc into LED segments -->
+          <mask id="speedoSegments" maskUnits="userSpaceOnUse" x="0" y="0" width="120" height="68">
+            <path class="speedo-seg" d="M 10 62 A 50 50 0 0 1 110 62" pathLength="100"/>
+          </mask>
+        </defs>
+        <path class="speedo-face" d="M 3 62 A 57 57 0 0 1 117 62 Z"/>
+        <path class="speedo-ticks" id="speedoTicks"/>
+        <path class="speedo-ticks speedo-ticks-red" id="speedoTicksRed"/>
+        <g mask="url(#speedoSegments)">
+          <path class="speedo-track" d="M 10 62 A 50 50 0 0 1 110 62" pathLength="100"/>
+        </g>
+        <g class="speedo-glow">
+          <g mask="url(#speedoSegments)">
+            <path class="speedo-fill" id="speedoFill" d="M 10 62 A 50 50 0 0 1 110 62" pathLength="100"/>
+          </g>
+        </g>
+        <circle class="speedo-head" id="speedoHead" r="3.1"/>
         <line class="speedo-cmd" id="speedoCmd" x1="60" y1="8" x2="60" y2="20"/>
       </svg>
       <span class="speedo-v" id="speedoValue">0.0</span>
@@ -2006,25 +2114,27 @@
   })();
 </script>
 
-<script src="js/config.js"></script>
-<script src="js/icons.js"></script>
-<script src="js/helpers.js"></script>
-<script src="js/connection.js"></script>
-<script src="js/graph-data.js"></script>
-<script src="js/health.js"></script>
-<script src="js/status-panels.js"></script>
-<script src="js/advanced-panels.js"></script>
-<script src="js/system-tiles.js"></script>
-<script src="js/metrics.js"></script>
-<script src="js/camera.js"></script>
-<script src="js/checks.js"></script>
-<script src="js/lidar-select.js"></script>
-<script src="js/estop.js"></script>
-<script src="js/controller.js"></script>
-<script src="js/drive.js"></script>
-<script src="js/cockpit.js"></script>
-<script src="js/radar.js"></script>
-<script src="js/main.js"></script>
+<script src="js/config.js?v=20261109f"></script>
+<script src="js/icons.js?v=20261109f"></script>
+<script src="js/helpers.js?v=20261109f"></script>
+<script src="js/connection.js?v=20261109f"></script>
+<script src="js/graph-data.js?v=20261109f"></script>
+<script src="js/health.js?v=20261109f"></script>
+<script src="js/status-panels.js?v=20261109f"></script>
+<script src="js/advanced-panels.js?v=20261109f"></script>
+<script src="js/system-tiles.js?v=20261109f"></script>
+<script src="js/metrics.js?v=20261109f"></script>
+<script src="js/camera.js?v=20261109f"></script>
+<script src="js/checks.js?v=20261109f"></script>
+<script src="js/lidar-select.js?v=20261109f"></script>
+<script src="js/estop.js?v=20261109f"></script>
+<script src="js/controller.js?v=20261109f"></script>
+<script src="js/avoid.js?v=20261109f"></script>
+<script src="js/drive.js?v=20261109f"></script>
+<script src="js/controller-speed.js?v=20261109f"></script>
+<script src="js/cockpit.js?v=20261109f"></script>
+<script src="js/radar.js?v=20261109f"></script>
+<script src="js/main.js?v=20261109f"></script>
 
 </body>
 </html>
