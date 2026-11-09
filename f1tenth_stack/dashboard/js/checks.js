@@ -331,8 +331,11 @@ async function runRestart() {
   restartWaitLoop(car, answer.via);
 }
 
-/* Is the car back? rosbridge takes a connection, and this page is served
-   again (when the car serves it). A function on its own so a test can
+/* Is the car back? rosbridge answers a ROS service call, and this page is
+   served again (when the car serves it). A connection alone is not enough:
+   rosbridge 2.0.4 keeps port 9090 open after its ROS side has shut down, so
+   the stopping rosbridge took connections and the page reloaded onto it,
+   CONNECTED with 0 nodes (F1-WSU-2, 2026-11-09). A function on its own so a test can
    stand in for the network. */
 function restartProbe() {
 
@@ -341,7 +344,7 @@ function restartProbe() {
     let socket;
     const done = ok => {
       clearTimeout(timer);
-      try { socket.onopen = socket.onerror = null; socket.close(); } catch (error) {}
+      try { socket.onopen = socket.onerror = socket.onmessage = null; socket.close(); } catch (error) {}
       resolve(ok);
     };
     const timer = setTimeout(() => done(false), 2500);
@@ -353,7 +356,14 @@ function restartProbe() {
       return;
     }
 
-    socket.onopen = () => done(true);
+    socket.onopen = () => socket.send(JSON.stringify(
+      { op: "call_service", service: "/rosapi/get_time", id: "restart-probe" }));
+    socket.onmessage = event => {
+      try {
+        const reply = JSON.parse(event.data);
+        if (reply.op === "service_response" && reply.id === "restart-probe") done(reply.result !== false);
+      } catch (error) {}
+    };
     socket.onerror = () => done(false);
 
   }).then(async rosbridge => {
