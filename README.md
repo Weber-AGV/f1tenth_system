@@ -66,13 +66,16 @@ If you have a SICK lidar connected to the network, you will see the IP address o
 4. teleop_tools  [https://index.ros.org/p/teleop_tools/#humble](https://index.ros.org/p/teleop_tools/#humble). This is the package for teleop with joysticks in ROS 2.
 5. vesc [GitHub - f1tenth/vesc at ros2](https://github.com/f1tenth/vesc/tree/ros2). This is the driver for VESCs in ROS 2.
 6. ackermann_mux [GitHub - f1tenth/ackermann_mux: Twist multiplexer](https://github.com/f1tenth/ackermann_mux). This is a package for multiplexing ackermann messages in ROS 2.
-<!-- 7. rosbridge_suite [https://index.ros.org/p/rosbridge_suite/#humble-overview](https://index.ros.org/p/rosbridge_suite/#humble-overview) This is a package that allows for websocket connection in ROS 2. -->
+7. rosbridge_suite [https://index.ros.org/p/rosbridge_suite/#humble-overview](https://index.ros.org/p/rosbridge_suite/#humble-overview). This is a package that allows for websocket connection in ROS 2. The diagnostics dashboard reads ROS through it. If it is missing, `rosdep install --from-paths src --ignore-src -r -y` installs it (it is declared in `f1tenth_stack/package.xml`).
+8. GStreamer [https://gstreamer.freedesktop.org/documentation/](https://gstreamer.freedesktop.org/documentation/). Streams the camera to the diagnostics dashboard, using the v4l2src, videoconvert, jpegenc, multipartmux and tcpserversink elements. It comes with the Jetson's Ubuntu image; if it is missing, the same `rosdep install` command installs it.
 
 ## Package in this repo
 
-1. f1tenth_stack: maintains the bringup launch and all parameter files
+1. f1tenth_stack: maintains the bringup launch and all parameter files, and the diagnostics dashboard (`f1tenth_stack/dashboard`)
 
 ## Nodes launched in bringup
+
+The drive stack:
 
 1. joy
 2. joy_teleop
@@ -81,6 +84,30 @@ If you have a SICK lidar connected to the network, you will see the IP address o
 5. vesc_driver_node
 6. urg_node
 7. ackermann_mux
+8. static_baselink_to_laser
+
+The diagnostics dashboard:
+
+9. system_diagnostics
+10. rosbridge_websocket, with rosapi and rosapi_params
+11. a web server for the dashboard page (`python3 -m http.server`, not a ROS node)
+12. the camera stream: a GStreamer pipeline and `camera_http` (not ROS nodes)
+
+The dashboard parts can be turned off with launch arguments, all `true` by default:
+
+| Launch argument | Turns off |
+|---|---|
+| `use_diagnostics` | `system_diagnostics`, rosbridge and the web server |
+| `use_camera` | the camera stream |
+| `use_lidar` | `urg_node` |
+
+For example `ros2 launch f1tenth_stack bringup_launch.py use_camera:=false`. With `use_diagnostics:=false use_camera:=false`, bringup starts the same 8 nodes it always did; `use_lidar:=false` also leaves out `urg_node`.
+
+## Diagnostics dashboard
+
+A web page, served by the robot, that shows whether the car is OK to drive: battery, VESC, lidar, odometry, camera, controller, temperatures, CPU, memory, Wi-Fi, and which nodes and topics are running, each in green, yellow or red. It also streams the camera, draws the lidar, and can drive the car. Once bringup is running, open `http://<robot ip>:8000/dashboard.html` from a laptop or phone on the robot's Wi-Fi.
+
+See [f1tenth_stack/dashboard/README.md](f1tenth_stack/dashboard/README.md) for setup, the ranges, and how each check works.
 
 ## Parameters and topics for dependencies
 
@@ -136,6 +163,24 @@ If you have a SICK lidar connected to the network, you will see the IP address o
 3. Subscribes to:
    - sensors/core
    - sensors/servo_position_command
+
+### system_diagnostics
+
+Part of `f1tenth_stack`; runs the diagnostics dashboard's robot side. See [f1tenth_stack/dashboard/README.md](f1tenth_stack/dashboard/README.md).
+
+1. Parameters:
+   - none; its thresholds are constants at the top of `system_diagnostics.py`
+2. Publishes to:
+   - diagnostics (temperatures, CPU, memory, disk, GPU, network, controller, camera USB link, clock)
+   - drive (zero-speed commands from the drive watchdog, marked `header.frame_id = "drive_watchdog"`)
+   - commands/motor/speed (speed 0 at 50 Hz while the emergency stop is on)
+3. Subscribes to:
+   - drive
+   - joy
+4. Services:
+   - ~/emergency_stop, ~/emergency_release
+   - ~/controller_disconnect
+   - ~/joystick_check
 
 ### throttle_interpolator
 

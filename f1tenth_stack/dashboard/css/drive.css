@@ -1,0 +1,1248 @@
+/* ==================================================================
+   DRIVE.CSS
+   Drive tab: the driving logic's own cards (hidden under the driving view), the unlock dialogs, and the old drive-mode entry.
+
+   Sections:
+      1. Drive mode entry card (unused)
+      2. Layout and the warning
+      3. Controls: arm, pad, STOP
+      4. Camera and heads-up display
+      5. Surroundings (LiDAR)
+      6. Who's driving
+      7. Vitals
+      8. Limits and unlock dialogs
+   ================================================================== */
+
+/* ------------------------------------------------------------------
+   1. DRIVE MODE ENTRY CARD (UNUSED)
+   ------------------------------------------------------------------ */
+
+/* the way in: one calm, clearly-clickable card at the top of the
+   Drive tab. The accent is in the icon and the button, not the
+   whole surface. */
+.drive-mode-hero {
+  width: 100%;
+  margin-top: 16px;
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--border);
+  border-left: 4px solid var(--orange);
+  border-radius: 12px;
+  background: var(--panel);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+  transition: border-color .15s ease, background-color .15s ease;
+}
+
+@media (hover: hover) {
+
+  .drive-mode-hero:hover {
+    border-color: color-mix(in srgb, var(--orange) 55%, var(--border));
+    border-left-color: var(--orange);
+    background: color-mix(in srgb, var(--orange) 5%, var(--panel));
+  }
+
+  .drive-mode-hero:hover .dmh-go .ic {
+    transform: translateX(3px);
+  }
+}
+
+.dmh-icon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--orange) 14%, var(--panel));
+  color: var(--orange);
+}
+
+.dmh-icon .ic {
+  width: 24px;
+  height: 24px;
+}
+
+.dmh-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.dmh-text strong {
+  font-size: 17px;
+  font-weight: 800;
+}
+
+.dmh-text span {
+  font-size: 13.5px;
+  color: var(--text-2);
+}
+
+.dmh-go {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 16px;
+  border-radius: 9px;
+  background: var(--orange);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.dmh-go .ic {
+  transition: transform .15s ease;
+}
+
+@media (max-width: 800px) {
+
+  .drive-mode-hero {
+    flex-wrap: wrap;
+    gap: 12px;
+    padding: 14px;
+  }
+
+  .dmh-go {
+    flex: 1 1 100%;
+    justify-content: center;
+    min-height: 44px;
+    font-size: 15px;
+  }
+}
+
+/* ------------------------------------------------------------------
+   2. LAYOUT AND THE WARNING
+   ------------------------------------------------------------------ */
+
+.drive-warning {
+  margin-top: 18px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  border: 1px solid color-mix(in srgb, var(--degraded) 55%, transparent);
+  background: var(--degraded-soft);
+  color: var(--text);
+  font-size: 13.5px;
+  line-height: 1.45;
+}
+
+/* controls | camera | vitals — everything you need while
+   driving is on screen at once, no scrolling away from the view */
+.drive-grid {
+  display: grid;
+  grid-template-columns: minmax(270px, 1fr) minmax(0, 1.3fr) minmax(280px, 1fr);
+  grid-template-areas: "left center right";
+  gap: 18px;
+  margin-top: 16px;
+  align-items: start;
+}
+
+.drive-col {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  min-width: 0;
+}
+
+/* Large camera: the view gets the room, the side columns shrink */
+.drive-grid[data-cam="large"] {
+  grid-template-columns: 280px minmax(0, 1fr) 300px;
+}
+
+.drive-left   { grid-area: left; }
+
+.drive-center { grid-area: center; }
+
+.drive-right  { grid-area: right; }
+
+@media (max-width: 1300px) {
+
+  .drive-grid,
+  .drive-grid[data-cam="large"] {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    grid-template-areas:
+      "center center"
+      "left right";
+  }
+}
+
+@media (max-width: 800px) {
+
+  .drive-grid,
+  .drive-grid[data-cam="large"] {
+    grid-template-columns: 1fr;
+    grid-template-areas: "center" "left" "right";
+  }
+
+  /* Drive: camera, who has the car, then the pad and STOP, then the
+     surroundings and the rest. (Enlarged LiDAR still goes first.) */
+  .drive-grid,
+  .drive-grid[data-cam="large"] {
+    grid-template-areas: none;
+  }
+
+  .drive-col {
+    display: contents;
+  }
+
+  .who-card      { order: 2; }
+
+  .drive-card    { order: 3; }
+
+  .vitals-card   { order: 5; }
+
+  .limits-card   { order: 6; }
+}
+
+/* ------------------------------------------------------------------
+   3. CONTROLS: ARM, PAD, STOP
+   ------------------------------------------------------------------ */
+
+.drive-state {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: var(--unknown-soft);
+  color: var(--muted);
+}
+
+.drive-state.armed {
+  background: var(--degraded-soft);
+  color: var(--warn-ink);
+}
+
+.drive-state.driving {
+  background: var(--orange);
+  color: #fff;
+}
+
+.arm-row {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-soft);
+}
+
+.arm-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13.5px;
+  cursor: pointer;
+}
+
+.arm-btn {
+  min-width: 110px;
+  padding: 8px 16px;
+  border-radius: 8px;
+  border: 1px solid var(--border-strong);
+  background: var(--panel);
+  color: var(--text);
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.arm-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.arm-btn.armed {
+  background: var(--orange);
+  border-color: var(--orange);
+  color: #fff;
+}
+
+.pad-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+  margin-top: 12px;
+}
+
+.pad-side {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  text-align: center;
+}
+
+.drive-pad {
+  position: relative;
+  width: 100%;
+  max-width: 280px;
+  aspect-ratio: 1 / 1;
+  margin: 0 auto;
+  border-radius: 50%;
+  border: 2px solid var(--border-strong);
+  background:
+    radial-gradient(circle, var(--panel-soft) 0 55%, var(--surface-3) 100%);
+  touch-action: none;
+  user-select: none;
+  cursor: not-allowed;
+  opacity: .55;
+  transition: opacity .15s, border-color .15s;
+}
+
+.drive-pad.ready {
+  cursor: grab;
+  opacity: 1;
+  border-color: var(--orange);
+}
+
+.drive-pad.held {
+  cursor: grabbing;
+}
+
+.pad-axis {
+  position: absolute;
+  background: var(--border);
+}
+
+.pad-axis-x {
+  left: 8%;
+  right: 8%;
+  top: 50%;
+  height: 1px;
+}
+
+.pad-axis-y {
+  top: 8%;
+  bottom: 8%;
+  left: 50%;
+  width: 1px;
+}
+
+.pad-label {
+  position: absolute;
+  font-size: 10.5px;
+  font-weight: 800;
+  letter-spacing: .08em;
+  color: var(--muted);
+}
+
+.pad-up    { top: 9%;    left: 50%; transform: translateX(-50%); }
+
+.pad-down  { bottom: 9%; left: 50%; transform: translateX(-50%); }
+
+.pad-left  { left: 7%;   top: 50%;  transform: translateY(-140%); }
+
+.pad-right { right: 7%;  top: 50%;  transform: translateY(-140%); }
+
+.pad-knob {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 26%;
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--panel);
+  border: 3px solid var(--border-strong);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, .18);
+  pointer-events: none;
+}
+
+.drive-pad.ready .pad-knob {
+  border-color: var(--orange);
+}
+
+.drive-pad.held .pad-knob {
+  background: var(--orange);
+}
+
+.stop-btn {
+  width: 100%;
+  height: 58px;
+  border-radius: 12px;
+  border: 4px solid color-mix(in srgb, var(--failed) 60%, #000);
+  background: var(--failed);
+  color: #fff;
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: .04em;
+  cursor: pointer;
+  box-shadow: 0 6px 18px -6px var(--failed);
+}
+
+.stop-btn:active {
+  transform: translateY(2px);
+}
+
+.hud .drive-state {
+  box-shadow: 0 1px 4px rgba(0, 0, 0, .35);
+}
+
+.pad-disconnect {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 6px;
+  width: 100%;
+}
+
+/* second only to STOP: amber, because it removes the backup stop */
+.pad-disconnect-btn {
+  width: 100%;
+  min-height: 46px;
+  padding: 8px 12px;
+  border-radius: 12px;
+  border: 3px solid color-mix(in srgb, var(--degraded) 60%, #000);
+  background: var(--degraded);
+  color: #1a1400;
+  font-size: 16px;
+  font-weight: 800;
+  cursor: pointer;
+  box-shadow: 0 5px 14px -6px var(--degraded);
+}
+
+.pad-disconnect-btn:hover:not(:disabled) {
+  filter: brightness(1.06);
+}
+
+.pad-disconnect-btn:active:not(:disabled) {
+  transform: translateY(2px);
+}
+
+.pad-disconnect-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.pad-disconnect-btn[hidden] {
+  display: none;
+}
+
+.pad-disconnect[hidden] {
+  display: none;
+}
+
+.pad-disconnect-note {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.pad-disconnect-note.bad {
+  color: var(--bad-ink);
+  font-weight: 600;
+}
+
+@media (max-width: 800px) {
+
+  .arm-btn {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  /* drive tab */
+  .drive-pad {
+    max-width: min(86vw, 320px);
+  }
+
+  .pad-side {
+    width: 100%;
+  }
+
+  .stop-btn {
+    height: 68px;
+    font-size: 26px;
+  }
+
+  .arm-check {
+    font-size: 15px;
+    align-items: flex-start;
+  }
+
+  .arm-check input {
+    width: 22px;
+    height: 22px;
+    flex: none;
+  }
+
+  .arm-btn {
+    width: 100%;
+    font-size: 17px;
+  }
+}
+
+.arm-btn {
+  transition: background-color .15s ease, border-color .15s ease,
+              color .15s ease, transform .08s ease;
+}
+
+@media (hover: hover) {
+
+  .arm-btn:hover:not(:disabled):not(.armed) {
+    border-color: var(--orange);
+    color: var(--text);
+    background: var(--panel-soft);
+  }
+}
+
+.arm-btn:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+.pad-disconnect-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pad-disconnect-btn {
+  justify-content: center;
+}
+
+/* ------------------------------------------------------------------
+   4. CAMERA AND HEADS-UP DISPLAY
+   ------------------------------------------------------------------ */
+
+.drive-grid[data-lidar="big"] .drive-cam .stream-box {
+  max-height: 24vh;
+}
+
+/* camera with a heads-up overlay */
+.drive-cam {
+  position: relative;
+}
+
+.drive-cam .stream-box {
+  aspect-ratio: 16 / 9;
+  height: auto;
+  max-height: 38vh;
+  margin: 0;
+}
+
+.drive-grid[data-cam="large"] .drive-cam .stream-box {
+  max-height: 62vh;
+}
+
+.size-switch {
+  display: flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.size-switch button {
+  border: 0;
+  background: var(--panel);
+  color: var(--muted);
+  padding: 3px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.size-switch button + button {
+  border-left: 1px solid var(--border-strong);
+}
+
+.hud {
+  position: absolute;
+  left: 10px;
+  right: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  pointer-events: none;
+}
+
+.hud-top {
+  top: 10px;
+}
+
+.hud-bottom {
+  bottom: 10px;
+  padding: 8px 12px;
+  border-radius: 9px;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+}
+
+.hud-chip {
+  padding: 3px 10px;
+  border-radius: 99px;
+  background: rgba(0, 0, 0, .55);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.hud-k {
+  display: block;
+  font-size: 10.5px;
+  font-weight: 700;
+  letter-spacing: .05em;
+  text-transform: uppercase;
+  opacity: .8;
+}
+
+.hud-v {
+  display: block;
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.hud-steer {
+  flex: 1;
+  max-width: 260px;
+  text-align: center;
+}
+
+.steer-bar {
+  position: relative;
+  height: 6px;
+  margin-top: 6px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, .25);
+}
+
+.steer-bar::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -3px;
+  bottom: -3px;
+  width: 1px;
+  background: rgba(255, 255, 255, .6);
+}
+
+.steer-bar i {
+  position: absolute;
+  top: -4px;
+  left: 50%;
+  width: 14px;
+  height: 14px;
+  margin-left: -7px;
+  border-radius: 50%;
+  background: var(--orange);
+  transition: left .08s linear;
+}
+
+.hud-fast {
+  background: rgba(239, 56, 43, 0.9);
+}
+
+@media (max-width: 800px) {
+
+  .hud-v {
+    font-size: 14px;
+  }
+
+  .size-switch button {
+    min-height: 36px;
+  }
+
+  /* live cards */
+  .live-grid .stream-box {
+    height: auto;
+    aspect-ratio: 16 / 10;
+  }
+
+  .live-grid .radar-box {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+  }
+
+  .drive-cam .stream-box {
+    max-height: 32vh;
+  }
+
+  .hud {
+    left: 6px;
+    right: 6px;
+  }
+
+  .hud-bottom {
+    padding: 6px 8px;
+    gap: 6px;
+  }
+
+  .hud-k {
+    font-size: 9px;
+  }
+
+  /* the Drive camera's tools get a row of their own */
+  .drive-view h2 .cam-tools {
+    flex: 1 1 100%;
+    justify-content: flex-start;
+  }
+
+  .drive-view h2 .size-switch {
+    margin-left: auto;
+  }
+
+  /* see it, know who has it, drive it, then the rest */
+  .drive-view    { order: 1; }
+
+  /* phones: header tools fill their row and share one height, so a
+   row of buttons reads as one control strip */
+  .drive-view h2 .cam-tools > .link-btn {
+    flex: 1 1 0;
+  }
+
+  .drive-view h2 .size-switch {
+    flex: 1 1 100%;
+    margin-left: 0;
+  }
+
+  .size-switch button {
+    flex: 1;
+  }
+}
+
+.size-switch button {
+  transition: background-color .15s ease, border-color .15s ease,
+              color .15s ease, transform .08s ease;
+}
+
+@media (hover: hover) {
+
+  .size-switch button:hover:not([aria-pressed="true"]) {
+    background: var(--panel-soft);
+    color: var(--text);
+  }
+}
+
+.size-switch button:focus-visible {
+  outline-offset: -3px;
+}
+
+.hud-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ------------------------------------------------------------------
+   5. SURROUNDINGS (LIDAR)
+   ------------------------------------------------------------------ */
+
+.drive-radar {
+  position: relative;
+  width: min(100%, 360px);
+  margin: 0 auto 12px;
+}
+
+/* zoom buttons sit on the plot's top-right corner */
+.radar-zoom {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: rgba(11, 13, 16, 0.75);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.radar-zoom button {
+  min-width: 28px;
+  height: 28px;
+  border: 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 15px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.radar-zoom button:hover {
+  background: rgba(255, 255, 255, 0.25);
+}
+
+.radar-zoom button[aria-pressed="true"] {
+  background: var(--orange);
+}
+
+#driveZoomAuto {
+  font-size: 12px;
+  padding: 0 8px;
+}
+
+#driveZoomLabel {
+  min-width: 58px;
+  text-align: center;
+  white-space: nowrap;
+}
+
+.small-btn {
+  padding: 3px 10px;
+  font-size: 12.5px;
+}
+
+/* Drive readouts: 2 × 2 in the narrower card */
+.surround-card .sector-grid {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.surround-card .sector-v {
+  font-size: 24px;
+}
+
+/* BIG LIDAR: the plot takes the camera's slot and grows; the camera
+   shrinks to a strip under it; controls and vitals never move */
+.drive-grid[data-lidar="big"] .surround-card {
+  order: -1;
+}
+
+.drive-grid[data-lidar="big"] .drive-radar {
+  width: min(100%, 62vh);
+}
+
+.drive-grid[data-lidar="big"] .surround-card .sector-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.drive-radar canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.size-switch button[aria-pressed="true"] {
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+.range-switch button[aria-pressed="true"] {
+  background: var(--text);
+  color: var(--bg);
+  font-weight: 700;
+}
+
+.surround-card .lidar-legend {
+  font-size: 12px;
+  gap: 4px 12px;
+}
+
+@media (max-width: 800px) {
+
+  .drive-grid[data-lidar="big"] .surround-card .sector-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .surround-card { order: 4; }
+
+  .top-btn.small-btn {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+}
+
+.radar-zoom button {
+  transition: background-color .15s ease, border-color .15s ease,
+              color .15s ease, transform .08s ease;
+}
+
+/* ------------------------------------------------------------------
+   6. WHO'S DRIVING
+   ------------------------------------------------------------------ */
+
+/* who's driving: one big answer, then only what matters */
+.control-hero {
+  --tone: var(--unknown);
+  --tone-soft: var(--unknown-soft);
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px;
+  border-radius: 12px;
+  border: 1px solid color-mix(in srgb, var(--tone) 45%, transparent);
+  background: var(--tone-soft);
+}
+
+.control-hero.tone-ok   { --tone: var(--healthy);  --tone-soft: var(--healthy-soft); }
+
+.control-hero.tone-you  { --tone: var(--orange);   --tone-soft: color-mix(in srgb, var(--orange) 14%, var(--panel)); }
+
+.control-hero.tone-warn { --tone: var(--degraded); --tone-soft: var(--degraded-soft); }
+
+.control-hero.tone-bad  { --tone: var(--failed);   --tone-soft: var(--failed-soft); }
+
+.control-icon {
+  width: 46px;
+  height: 46px;
+  flex: none;
+  display: grid;
+  place-items: center;
+  border-radius: 12px;
+  background: var(--panel);
+  border: 2px solid var(--tone);
+  font-size: 24px;
+}
+
+.control-title {
+  font-size: 18px;
+  font-weight: 800;
+  line-height: 1.2;
+}
+
+.control-sub {
+  margin-top: 3px;
+  font-size: 13px;
+  color: var(--text-2);
+  line-height: 1.35;
+}
+
+.control-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.control-chip {
+  padding: 4px 10px;
+  border-radius: 99px;
+  border: 1px solid var(--border);
+  background: var(--panel-soft);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.control-chip.ok {
+  border-color: color-mix(in srgb, var(--healthy) 40%, transparent);
+  background: var(--healthy-soft);
+  color: var(--ok-ink);
+}
+
+.control-chip.warn {
+  border-color: color-mix(in srgb, var(--degraded) 55%, transparent);
+  background: var(--degraded-soft);
+  color: var(--warn-ink);
+}
+
+.control-alerts {
+  list-style: none;
+  margin: 10px 0 0;
+  padding: 0;
+}
+
+.control-alerts:empty {
+  display: none;
+}
+
+.control-alerts li {
+  margin-top: 6px;
+  padding: 8px 10px 8px 12px;
+  border-left: 4px solid var(--degraded);
+  border-radius: 6px;
+  background: var(--degraded-soft);
+  font-size: 13px;
+  line-height: 1.4;
+}
+
+.control-alerts li.bad {
+  border-left-color: var(--failed);
+  background: var(--failed-soft);
+}
+
+.control-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.radar-objects li {
+  padding: 6px 10px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13.5px;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ------------------------------------------------------------------
+   7. VITALS
+   ------------------------------------------------------------------ */
+
+/* vitals */
+.vitals {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.vital {
+  display: grid;
+  grid-template-columns: 10px 1fr auto;
+  grid-template-rows: auto auto;
+  column-gap: 10px;
+  align-items: center;
+  padding: 8px 0;
+  border-top: 1px solid var(--border-soft);
+}
+
+.vital:first-child {
+  border-top: 0;
+}
+
+.vital-label {
+  font-weight: 700;
+  font-size: 13.5px;
+}
+
+.vital-value {
+  font-weight: 800;
+  font-size: 15px;
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.vital.warn .vital-value { color: var(--warn-ink); }
+
+.vital.bad  .vital-value { color: var(--bad-ink); }
+
+.vital-note {
+  grid-column: 2 / -1;
+  font-size: 11.5px;
+  color: var(--muted);
+}
+
+.vital.bad {
+  background: color-mix(in srgb, var(--failed-soft) 55%, transparent);
+}
+
+/* Drive tab vitals: Temperature carries the Overview's mini bars */
+.vital-rows {
+  grid-column: 2 / -1;
+}
+
+.vital-rows .metric-rows {
+  margin-top: 6px;
+}
+
+/* ------------------------------------------------------------------
+   8. LIMITS AND UNLOCK DIALOGS
+   ------------------------------------------------------------------ */
+
+.slider-row {
+  display: grid;
+  grid-template-columns: 92px 1fr 58px;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0;
+  font-size: 13.5px;
+}
+
+.slider-row input {
+  width: 100%;
+  accent-color: var(--orange);
+}
+
+.slider-row strong {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.limit-badges {
+  display: flex;
+  gap: 6px;
+}
+
+/* high-speed unlock */
+.warn-btn {
+  width: 100%;
+  justify-content: center;
+  white-space: normal;    /* .top-btn is nowrap; a narrow card must wrap the label */
+  text-align: center;
+  margin-top: 6px;
+  border-color: color-mix(in srgb, var(--degraded) 70%, transparent);
+  background: var(--degraded-soft);
+  color: var(--warn-ink);
+  font-weight: 700;
+}
+
+.warn-btn:hover {
+  background: color-mix(in srgb, var(--degraded) 30%, var(--panel));
+}
+
+.warn-btn.unlocked {
+  border-color: var(--border-strong);
+  background: var(--panel);
+  color: var(--text-2);
+}
+
+.warn-btn:disabled {
+  opacity: .5;
+  cursor: not-allowed;
+}
+
+.speed-mode {
+  padding: 2px 9px;
+  border-radius: 99px;
+  background: var(--failed);
+  color: #fff;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+}
+
+.speed-dialog {
+  max-width: 520px;
+  width: calc(100% - 32px);
+  padding: 22px 24px;
+  border: 1px solid var(--border);
+  border-top: 6px solid var(--failed);
+  border-radius: 14px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, .35);
+}
+
+.speed-dialog::backdrop {
+  background: rgba(0, 0, 0, .55);
+}
+
+.speed-dialog h2 {
+  margin: 0 0 10px;
+  font-size: 20px;
+}
+
+.speed-dialog p,
+.speed-dialog li {
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.speed-dialog ul {
+  margin: 8px 0 14px;
+  padding-left: 20px;
+}
+
+.speed-ack {
+  display: flex;
+  gap: 10px;
+  align-items: flex-start;
+  margin: 8px 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: var(--panel-soft);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.speed-ack input {
+  margin-top: 3px;
+}
+
+.speed-note {
+  color: var(--muted);
+  font-size: 12.5px !important;
+}
+
+.speed-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.speed-actions .warn-btn {
+  width: auto;
+  margin: 0;
+}
+
+@media (max-width: 800px) {
+
+  .top-btn,
+.check-btn {
+    min-height: 44px;
+    font-size: 15px;
+  }
+
+  .slider-row {
+    grid-template-columns: 1fr auto;
+    row-gap: 4px;
+    margin: 14px 0;
+  }
+
+  .slider-row input {
+    grid-column: 1 / -1;
+    grid-row: 2;
+    height: 32px;
+  }
+
+  /* fold the bar down to connection status + tabs */
+  .topbar-toggle {
+    display: flex;
+    order: 2;
+    min-width: 84px;
+    justify-content: center;
+  }
+
+  .topbar-toggle      { order: 4; }
+
+  .topbar-toggle      { order: 4; min-width: 0; padding: 0 10px; }
+
+  .topbar-toggle { order: 3; }
+}
+
+@media (max-width: 400px) {
+
+  .topbar-toggle {
+    width: 44px;
+    padding: 0;
+  }
+}
+
+@media (hover: hover) {
+
+  .top-btn:hover:not(:disabled):not(.warn-btn) {
+    border-color: var(--orange);
+    color: var(--text);
+    background: var(--panel-soft);
+  }
+}
+
+.info-tip {
+  display: inline-grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  margin-left: 2px;
+  border-radius: 50%;
+  color: var(--muted);
+  cursor: help;
+  font-size: 13px;
+}
+
+.speed-dialog h2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.warn-btn {
+  gap: 8px;
+}
+
+.info-tip .ic {
+  width: 15px;
+  height: 15px;
+}

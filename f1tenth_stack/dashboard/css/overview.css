@@ -1,0 +1,2128 @@
+/* ==================================================================
+   OVERVIEW.CSS
+   Overview tab: battery and computer tiles, subsystems, ROS graph, camera card, LiDAR card (Lines and the Detailed radar), beam select.
+
+   Sections:
+      1. Battery and computer tiles
+      2. Subsystems
+      3. ROS graph
+      4. Camera card
+      5. LiDAR card: Lines view, toolbar, key, sectors
+      6. LiDAR card: Detailed view (the radar panel)
+      7. Beam select
+   ================================================================== */
+
+/* ------------------------------------------------------------------
+   1. BATTERY AND COMPUTER TILES
+   ------------------------------------------------------------------ */
+
+.critical-grid {
+  display: grid;
+  grid-template-columns: minmax(260px, 1fr) 3fr;
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+
+/* A metric is a number with a threshold, so it carries its own
+   verdict: the left edge and the bar say good / eh / bad at a
+   glance, and the number is there for when that is not enough. */
+.metric {
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--unknown);
+  background: var(--panel);
+  padding: 12px 13px;
+  min-width: 0;
+}
+
+.metric .label {
+  color: var(--text-2);
+  font-weight: 700;
+  font-size: 14px;
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.metric .sub {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.metric .value {
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-top: 9px;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.metric .value.small {
+  font-size: 19px;
+}
+
+.metric .note {
+  margin-top: 5px;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.bar {
+  height: 6px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  margin-top: 10px;
+  overflow: hidden;
+}
+
+.bar > i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--unknown);
+  transition: width .3s ease, background .3s ease;
+}
+
+/* Multi-row tiles (Temperature, Network): one small graded row per
+   reading instead of a single big number, so e.g. CPU/GPU/FET each get
+   their own bar and colour rather than being crammed into one number
+   with the rest as plain text underneath. */
+/* One grid for all rows, so every bar in a tile starts and ends at the
+   same x whatever the label or value width. */
+.metric-rows {
+  margin-top: 9px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 7px 8px;
+}
+
+.metric-row {
+  display: contents;
+}
+
+.metric-row[title] { cursor: help; }
+
+.metric-row .row-label {
+  flex: 0 0 auto;
+  min-width: 64px;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.metric-row .row-bar {
+  flex: 1 1 auto;
+  height: 5px;
+  border-radius: 3px;
+  background: var(--surface-3);
+  overflow: hidden;
+}
+
+.metric-row .row-bar > i {
+  display: block;
+  height: 100%;
+  transition: width .3s ease, background .3s ease;
+}
+
+.metric-row .row-bar > i.g-ok      { background: var(--healthy); }
+
+.metric-row .row-bar > i.g-warn    { background: var(--degraded); }
+
+.metric-row .row-bar > i.g-bad     { background: var(--failed); }
+
+.metric-row .row-bar > i.g-unknown { background: var(--unknown); }
+
+.metric-row .row-value {
+  flex: 0 0 auto;
+  min-width: 48px;
+  text-align: right;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.metric-row .row-value.g-ok      { color: var(--healthy); }
+
+.metric-row .row-value.g-warn    { color: var(--warn-ink); }
+
+.metric-row .row-value.g-bad     { color: var(--failed); }
+
+.metric-row .row-value.g-unknown { color: var(--unknown); }
+
+.metric.g-ok       { border-left-color: var(--healthy); }
+
+.metric.g-warn     { border-left-color: var(--degraded); }
+
+.metric.g-bad      { border-left-color: var(--failed); }
+
+.metric.g-unknown  { border-left-color: var(--unknown); }
+
+.metric.g-ok      .value { color: var(--healthy); }
+
+.metric.g-warn    .value { color: var(--warn-ink); }
+
+.metric.g-bad     .value { color: var(--failed); }
+
+.metric.g-unknown .value { color: var(--unknown); }
+
+.metric.g-ok      .bar > i { background: var(--healthy); }
+
+.metric.g-warn    .bar > i { background: var(--degraded); }
+
+.metric.g-bad     .bar > i { background: var(--failed); }
+
+.note .note-item.g-ok      { color: var(--healthy); }
+
+.note .note-item.g-warn    { color: var(--warn-ink); }
+
+.note .note-item.g-bad     { color: var(--failed); }
+
+.note .note-item.g-unknown { color: var(--unknown); }
+
+.hw-strip {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(190px, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.hw {
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 12px 13px;
+  display: grid;
+  grid-template-columns: 30px 1fr;
+  gap: 11px;
+  align-items: start;
+  background: var(--panel);
+}
+
+.hw-icon {
+  font-size: 23px;
+  line-height: 1.1;
+  text-align: center;
+}
+
+.hw-name {
+  font-weight: 800;
+  font-size: 15px;
+}
+
+.hw-state {
+  font-weight: 800;
+  font-size: 12px;
+  letter-spacing: .04em;
+  margin-top: 3px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.hw-detail {
+  color: var(--text-2);
+  font-size: 12px;
+  margin-top: 4px;
+  line-height: 1.35;
+}
+
+.hw.degraded { background: var(--degraded-soft); border-color: color-mix(in srgb, var(--degraded) 45%, transparent); }
+
+.hw.failed   { background: var(--failed-soft); border-color: color-mix(in srgb, var(--failed) 40%, transparent); }
+
+.hw.unknown  { background: var(--unknown-soft); }
+
+.summary-grid {
+  display: grid;
+  grid-template-columns:
+    1.05fr
+    1fr
+    1fr
+    1.25fr
+    1fr
+    1.6fr;
+  gap: 20px;
+  margin-top: 27px;
+}
+
+.summary-card {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  min-height: 122px;
+  padding: 13px 14px;
+}
+
+.summary-card .label {
+  color: var(--text-2);
+  font-weight: 700;
+  font-size: 16px;
+}
+
+.summary-card .big {
+  font-size: 36px;
+  font-weight: 800;
+  line-height: 1.1;
+  margin-top: 14px;
+  font-variant-numeric: tabular-nums;
+}
+
+.summary-card .small {
+  margin-top: 7px;
+  color: var(--text-2);
+  font-size: 14px;
+}
+
+.diagnostics-numbers {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.diag-number {
+  text-align: center;
+}
+
+.diag-number strong {
+  font-size: 31px;
+  display: block;
+  line-height: 1;
+}
+
+.diag-number span {
+  display: block;
+  margin-top: 6px;
+  font-weight: 700;
+  font-size: 12px;
+}
+
+.ok-color {
+  color: var(--healthy);
+}
+
+.warn-color {
+  color: var(--degraded);
+}
+
+.err-color {
+  color: var(--failed);
+}
+
+.unknown-color {
+  color: var(--unknown);
+}
+
+.battery-card {
+  display: grid;
+  grid-template-columns: 1fr 145px;
+  align-items: center;
+  gap: 8px;
+}
+
+.battery-main {
+  min-width: 0;
+}
+
+.battery-voltage {
+  margin-top: 13px;
+  font-size: 36px;
+  color: var(--orange);
+  font-weight: 900;
+}
+
+.battery-note {
+  margin-top: 4px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.battery-bar {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--surface-3);
+  margin-top: 12px;
+  overflow: hidden;
+}
+
+.battery-bar-fill {
+  height: 100%;
+  width: 0;
+  background: var(--unknown);
+  transition: width .35s ease, background .35s ease;
+}
+
+.gauge-caption {
+  text-align: center;
+  font-weight: 700;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 4px;
+}
+
+.battery-gauge {
+  position: relative;
+  width: 130px;
+  height: 70px;
+  overflow: hidden;
+  margin-left: auto;
+}
+
+.gauge-ring {
+  position: absolute;
+  width: 130px;
+  height: 130px;
+  border-radius: 50%;
+  background:
+    conic-gradient(
+      from 270deg,
+      #ff382f 0deg 54deg,
+      #ffa20b 54deg 82deg,
+      #ffe000 82deg 110deg,
+      #82cb00 110deg 138deg,
+      #12b82d 138deg 180deg,
+      var(--surface-3) 180deg 360deg
+    );
+}
+
+.gauge-inner {
+  position: absolute;
+  width: 88px;
+  height: 88px;
+  background: var(--panel);
+  border-radius: 50%;
+  left: 21px;
+  top: 21px;
+}
+
+.gauge-center {
+  position: absolute;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--text);
+  left: 59px;
+  top: 59px;
+  z-index: 3;
+}
+
+.gauge-needle {
+  position: absolute;
+  width: 4px;
+  height: 50px;
+  background: var(--text);
+  left: 63px;
+  top: 14px;
+  transform-origin: 2px 50px;
+  transform: rotate(-90deg);
+  z-index: 2;
+  border-radius: 4px;
+  transition: transform .35s ease;
+}
+
+.spark {
+  display: block;
+  width: 100%;
+  height: 26px;
+  margin-top: 6px;
+  overflow: visible;
+}
+
+.spark path.line {
+  fill: none;
+  stroke: var(--unknown);
+  stroke-width: 1.5;
+  stroke-linejoin: round;
+  vector-effect: non-scaling-stroke;
+}
+
+.spark path.area {
+  fill: var(--unknown);
+  opacity: .12;
+}
+
+.metric.g-ok   .spark path { stroke: var(--healthy); fill: var(--healthy); }
+
+.metric.g-warn .spark path { stroke: var(--degraded); fill: var(--degraded); }
+
+.metric.g-bad  .spark path { stroke: var(--failed); fill: var(--failed); }
+
+.metric .spark path.line { fill: none; }
+
+.spark.empty {
+  visibility: hidden;
+}
+
+@media (max-width: 1350px) {
+
+  .summary-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .critical-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 800px) {
+
+  .metrics {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .summary-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .battery-card {
+    grid-template-columns: 1fr;
+  }
+
+  .critical-grid > * {
+    min-width: 0;
+  }
+
+  .battery-card {
+    grid-template-columns: 1fr 120px;
+  }
+
+  .battery-gauge {
+    transform: scale(.9);
+    transform-origin: right center;
+  }
+
+  .metrics {
+    gap: 10px;
+  }
+
+  .metric .value {
+    font-size: 24px;
+  }
+
+  .critical-grid {
+    gap: 14px;
+  }
+}
+
+@media (max-width: 420px) {
+
+  .battery-card {
+    grid-template-columns: 1fr;
+  }
+
+  .battery-gauge {
+    margin: 0 auto;
+    transform-origin: center;
+  }
+}
+
+@media (min-width: 341px) and (max-width: 420px) {
+
+  /* small phones: the battery number and its gauge still share a row */
+  .battery-card {
+    grid-template-columns: 1fr 120px;
+  }
+
+  .battery-gauge {
+    margin: 0 0 0 auto;
+    transform-origin: right center;
+  }
+}
+
+/* ------------------------------------------------------------------
+   2. SUBSYSTEMS
+   ------------------------------------------------------------------ */
+
+.hw-state .health-dot {
+  width: 11px;
+  height: 11px;
+}
+
+.hw.healthy  { background: var(--healthy-soft); border-color: color-mix(in srgb, var(--healthy) 35%, transparent); }
+
+.main-grid {
+  margin-top: 27px;
+  display: grid;
+  grid-template-columns: minmax(650px, 2fr) minmax(360px, 1fr);
+  gap: 40px;
+}
+
+.section-title {
+  font-size: 23px;
+  margin: 0 0 14px;
+}
+
+.subsystem-wrap {
+  overflow-x: auto;
+}
+
+.subsystem-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 780px;
+}
+
+.subsystem-table thead th {
+  background: var(--surface-3);
+  color: var(--text-2);
+  padding: 13px;
+  font-size: 15px;
+  text-align: left;
+}
+
+.subsystem-table tbody td {
+  padding: 14px 13px;
+  vertical-align: middle;
+}
+
+.subsystem-name {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+}
+
+.subsystem-icon {
+  width: 32px;
+  text-align: center;
+  font-size: 25px;
+  flex: none;
+}
+
+.subsystem-title {
+  font-weight: 800;
+  font-size: 16px;
+}
+
+.subsystem-subtitle {
+  display: block;
+  color: var(--muted);
+  font-size: 12px;
+  margin-top: 2px;
+}
+
+.source {
+  color: var(--text-2);
+  font-family: monospace;
+  font-size: 14px;
+}
+
+.health {
+  display: inline-flex;
+  align-items: center;
+  gap: 9px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
+.health-dot {
+  width: 21px;
+  height: 21px;
+  border-radius: 50%;
+  display: inline-block;
+}
+
+.health.healthy {
+  color: var(--healthy);
+}
+
+.health.healthy .health-dot {
+  background: var(--healthy);
+}
+
+.health.degraded {
+  color: var(--warn-ink);
+}
+
+.health.degraded .health-dot {
+  background: var(--degraded);
+}
+
+.health.failed {
+  color: var(--failed);
+}
+
+.health.failed .health-dot {
+  background: var(--failed);
+}
+
+.health.unknown {
+  color: var(--unknown);
+}
+
+.health.unknown .health-dot {
+  background: var(--unknown);
+}
+
+.details {
+  color: var(--text-2);
+  max-width: 300px;
+}
+
+.right-column {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+}
+
+@media (max-width: 1350px) {
+
+  .main-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 800px) {
+
+  .main-grid > * {
+    min-width: 0;
+  }
+
+  .live-card,
+.side-card {
+    min-width: 0;
+  }
+
+  .main-grid {
+    gap: 14px;
+  }
+
+  /* subsystem table -> one card per subsystem */
+  .subsystem-wrap {
+    overflow: visible;
+  }
+
+  .subsystem-table,
+  .subsystem-table tbody,
+  .subsystem-table tr,
+  .subsystem-table td {
+    display: block;
+    min-width: 0;
+    width: 100%;
+  }
+
+  .subsystem-table thead {
+    display: none;
+  }
+
+  .subsystem-table tbody tr {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--panel);
+    padding: 10px 12px;
+    margin-bottom: 10px;
+  }
+
+  .subsystem-table td:nth-child(2)::before,
+  .subsystem-table td:nth-child(4)::before {
+    display: block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .05em;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  .subsystem-table td:nth-child(2)::before { content: "Node / Source"; }
+
+  .subsystem-table td:nth-child(4)::before { content: "Details"; }
+
+  .source {
+    overflow-wrap: anywhere;
+  }
+
+  .details {
+    max-width: none;
+  }
+}
+
+.main-grid {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+.subsystem-icon {
+  display: grid;
+  place-items: center;
+  color: var(--text-2);
+}
+
+.subsystem-icon .ic {
+  width: 24px;
+  height: 24px;
+  stroke-width: 1.75;
+}
+
+.overall-icon .ic {
+  width: 24px;
+  height: 24px;
+  stroke-width: 2.5;
+}
+
+.estop-btn .ic {
+  width: 15px;
+  height: 15px;
+}
+
+.main-grid {
+  grid-template-columns: minmax(0, 1.9fr) minmax(320px, 1fr);
+  gap: 20px;
+  align-items: stretch;
+}
+
+.sub-panel {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+/* the table fills its panel, so the two panels end together and
+   the rows share any spare height */
+.sub-panel .subsystem-wrap {
+  flex: 1;
+  display: flex;
+}
+
+.sub-panel .subsystem-table {
+  height: 100%;
+  min-width: 640px;
+}
+
+.sub-panel .subsystem-table thead th {
+  font-size: 14px;
+  padding: 11px 13px;
+}
+
+.sub-grid {
+  display: none;
+}
+
+/* phone cards: the metric tiles' language - a status edge, the
+   verdict, the why */
+.sub-card {
+  border: 1px solid var(--border);
+  border-left: 5px solid var(--unknown);
+  background: var(--panel);
+  padding: 12px 14px;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sub-card.healthy  { border-left-color: var(--healthy); }
+
+.sub-card.degraded { border-left-color: var(--degraded); }
+
+.sub-card.failed   { border-left-color: var(--failed); }
+
+.sub-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.sub-head .subsystem-icon {
+  width: 28px;
+}
+
+.sub-name {
+  flex: 1;
+  min-width: 0;
+}
+
+.sub-card .health {
+  font-size: 13px;
+  gap: 6px;
+}
+
+.sub-card .health-dot {
+  width: 12px;
+  height: 12px;
+}
+
+.sub-detail {
+  margin: 0;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
+}
+
+.sub-source {
+  margin: 0;
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--muted);
+  overflow-wrap: anywhere;
+}
+
+@media (max-width: 1250px) {
+
+  .main-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+@media (max-width: 800px) {
+
+  /* phones: cards instead of the table */
+  .sub-panel .subsystem-wrap {
+    display: none;
+  }
+
+  .sub-grid {
+    display: grid;
+    gap: 10px;
+  }
+
+  .sub-panel {
+    padding: 12px;
+  }
+
+  .sub-panel h2.split-head {
+    flex-wrap: wrap;
+  }
+}
+
+/* ------------------------------------------------------------------
+   3. ROS GRAPH
+   ------------------------------------------------------------------ */
+
+.readout-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 13px;
+}
+
+.readout-grid > div {
+  min-width: 0;
+}
+
+.readout-grid .k {
+  display: block;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.readout-grid .v {
+  display: block;
+  margin-top: 5px;
+  font-size: 21px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.readout-grid .n {
+  display: block;
+  margin-top: 3px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.diag-inline {
+  display: flex;
+  gap: 10px;
+}
+
+.graph-sub {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+  margin: 16px 0 6px;
+}
+
+.node-list,
+.topic-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.node-list {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px 12px;
+}
+
+.node-list li,
+.topic-list li {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  font-family: monospace;
+  font-size: 12px;
+  padding: 4px 0;
+}
+
+.topic-list li {
+  border-top: 1px solid var(--border-soft);
+  padding: 6px 0;
+}
+
+.topic-list li:first-child {
+  border-top: 0;
+}
+
+.node-list .name,
+.topic-list .name {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
+}
+
+.node-list li.down .name {
+  color: var(--failed);
+  text-decoration: line-through;
+}
+
+.topic-list .why {
+  margin-left: auto;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: nowrap;
+  max-width: none;
+  margin-top: 0;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  flex: none;
+  background: var(--unknown);
+}
+
+.dot.ok   { background: var(--healthy); }
+
+.dot.warn { background: var(--degraded); }
+
+.dot.bad  { background: var(--failed); }
+
+@media (max-width: 800px) {
+
+  /* ROS graph */
+  .node-list {
+    grid-template-columns: 1fr;
+  }
+
+  .topic-list li {
+    flex-wrap: wrap;
+  }
+
+  .topic-list .name {
+    white-space: normal;
+    overflow-wrap: anywhere;
+  }
+
+  .topic-list .why {
+    white-space: normal;
+    margin-left: 15px;
+  }
+
+  .readout-grid .v {
+    font-size: 19px;
+  }
+}
+
+.graph-side {
+  min-width: 0;
+}
+
+/* ------------------------------------------------------------------
+   4. CAMERA CARD
+   ------------------------------------------------------------------ */
+
+.live-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 27px;
+}
+
+.stream-box {
+  background: #111;
+  border-radius: 8px;
+  overflow: hidden;
+  aspect-ratio: 16 / 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.stream-box img[hidden] {
+  display: none !important;
+}
+
+/* the REC mark rides on the picture wherever it is shown */
+.stream-box {
+  position: relative;
+}
+
+.rec-badge {
+  position: absolute;
+  z-index: 2;
+  top: 10px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 7px;
+  background: rgba(0, 0, 0, .7);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .04em;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.rec-badge[hidden] {
+  display: none;
+}
+
+.rec-dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ef4444;
+  animation: rec-blink 1.2s steps(1) infinite;
+}
+
+@keyframes rec-blink {
+  50% { opacity: .25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rec-dot { animation: none; }
+}
+
+/* Record on the camera card: red while it runs */
+.record-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.record-btn .ic {
+  width: 15px;
+  height: 15px;
+  color: #ef4444;
+}
+
+.record-btn.recording {
+  border-color: #ef4444;
+  background: color-mix(in srgb, #ef4444 14%, transparent);
+  font-variant-numeric: tabular-nums;
+}
+
+.stream-box img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+}
+
+/* Side by side, the two sensor views share one height. The radar
+   stays square (the canvas and drag-select assume it), so it is
+   capped by width and centred instead of stretched. */
+.live-grid .stream-box {
+  aspect-ratio: auto;
+  height: 420px;
+}
+
+.stream-message {
+  color: #cfcfcf;
+  font-size: 13px;
+  padding: 16px;
+  text-align: center;
+}
+
+.camera-controls {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 11px;
+}
+
+.camera-controls input {
+  flex: 1;
+  min-width: 170px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: monospace;
+  font-size: 12px;
+}
+
+.snapshot {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+}
+
+.snapshot img {
+  width: 100%;
+  display: block;
+  border-radius: 6px;
+  background: #111;
+}
+
+.snapshot-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 9px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.topbar-conn input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font-family: monospace;
+  font-size: 13px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.cam-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+@media (max-width: 800px) {
+
+  .live-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .topbar-conn input {
+    flex: 1 1 100%;
+    order: 3;
+  }
+
+  .topbar-conn input {
+    font-size: 16px; /* stops iOS zooming in on focus */
+    min-height: 44px;
+  }
+
+  .camera-controls input {
+    font-size: 16px; /* stops iOS zooming in on focus */
+    min-height: 44px;
+  }
+
+  .live-grid {
+    gap: 14px;
+  }
+
+  .camera-controls .check-btn,
+.snapshot-actions .check-btn {
+    flex: 1 1 calc(50% - 8px);
+    text-align: center;
+  }
+
+  .cam-tools {
+    gap: 8px;
+  }
+
+  .topbar-conn input  { order: 5; flex: 1 1 100%; }
+
+  .topbar-conn input  { order: 5; flex: 1 1 200px; }
+
+  .cam-tools {
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    row-gap: 6px;
+    margin-left: auto;
+  }
+
+  .camera-controls .camera-source {
+    flex: 1 1 100%;
+  }
+
+  .camera-controls .check-btn {
+    flex: 1 1 100%;
+  }
+
+  .camera-edit summary {
+    padding: 6px 0;
+  }
+}
+
+.camera-controls {
+  align-items: center;
+}
+
+.camera-source {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+.camera-source::before {
+  content: "";
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--healthy);
+}
+
+.camera-source.manual::before {
+  background: var(--link);
+}
+
+.camera-edit {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.camera-edit summary {
+  width: fit-content;
+  cursor: pointer;
+}
+
+.camera-edit-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.camera-edit-row input {
+  flex: 1 1 220px;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-family: monospace;
+  font-size: 12px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.camera-edit-row .check-btn[hidden] {
+  display: none;
+}
+
+@media (max-width: 800px) {
+
+  .camera-edit-row input {
+    flex: 1 1 100%;
+    min-height: 44px;
+    font-size: 16px; /* stops iOS zooming in on focus */
+  }
+
+  .camera-edit-row .check-btn {
+    flex: 1 1 calc(50% - 8px);
+    text-align: center;
+  }
+}
+
+/* ------------------------------------------------------------------
+   5. LIDAR CARD: LINES VIEW, TOOLBAR, KEY, SECTORS
+   ------------------------------------------------------------------ */
+
+/* Square, not 16/10 — the scan is a 270° fan (not a rectangle),
+   and a square gives the rear 90° blind spot room to show as a
+   blank wedge instead of getting cropped off. */
+.radar-box {
+  aspect-ratio: 1 / 1;
+  margin-bottom: 12px;
+}
+
+.live-grid .radar-box {
+  width: min(100%, 420px);
+  margin: 0 auto 12px;
+}
+
+.radar-box canvas {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+/* Center: bottom left of every plot - behind the car, the LiDAR's
+   blind spot - so it never covers a return. Matches the Drive tab's
+   zoom controls in the opposite corner. */
+.radar-box {
+  position: relative;
+}
+
+.radar-center {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  height: 34px;
+  padding: 0 11px;
+  border: 0;
+  border-radius: 9px;
+  background: rgba(11, 13, 16, 0.75);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.radar-center:hover:not(:disabled) {
+  background: rgba(45, 50, 58, 0.92);
+}
+
+.radar-center:disabled {
+  opacity: .4;
+  cursor: default;
+}
+
+.lidar-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: -4px 0 10px;
+}
+
+/* the one-sentence answer, above the map */
+.lidar-status {
+  margin: 0 0 12px;
+  padding: 10px 14px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+  border-left-width: 6px;
+  font-size: 15px;
+  line-height: 1.4;
+  background: var(--panel-soft);
+}
+
+.lidar-status.tone-far {
+  border-left-color: var(--healthy);
+  background: var(--healthy-soft);
+}
+
+.lidar-status.tone-close {
+  border-left-color: var(--degraded);
+  background: var(--degraded-soft);
+}
+
+.lidar-status.tone-near {
+  border-left-color: var(--failed);
+  background: var(--failed-soft);
+}
+
+.lidar-status.tone-none {
+  border-left-color: var(--unknown);
+  color: var(--muted);
+}
+
+.lidar-howto {
+  margin: -6px 0 12px;
+  font-size: 13px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.lidar-tech {
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--muted);
+}
+
+.lidar-tech summary {
+  cursor: pointer;
+  width: fit-content;
+}
+
+.lidar-tech .card-hint {
+  margin-top: 6px;
+}
+
+/* Range (m) and its steps: one piece when the toolbar wraps */
+.lidar-range-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.lidar-toolbar-label {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.range-switch {
+  display: flex;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  overflow: hidden;
+}
+
+.range-switch button {
+  border: 0;
+  background: var(--panel);
+  color: var(--muted);
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.range-switch button + button {
+  border-left: 1px solid var(--border-strong);
+}
+
+.lidar-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 6px 16px;
+  margin: 4px 0 14px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.lidar-legend span {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.sw {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 3px;
+}
+
+.sw-near  { background: #ff5a52; }
+
+.sw-close { background: #ffc400; }
+
+.sw-far   { background: #39ff88; }
+
+.sw-ghost { background: rgba(140, 150, 168, 0.7); }
+
+.sw-free  { background: rgba(57, 200, 120, 0.25); border: 1px solid rgba(57, 200, 120, 0.5); }
+
+.sw-moved {
+  background: transparent;
+  border: 2px solid var(--text);
+  border-radius: 50%;
+}
+
+/* each view's key shows only its own items */
+.lidar-legend[data-view="lines"] .only-detailed,
+.lidar-legend[data-view="detailed"] .only-lines {
+  display: none;
+}
+
+.sw-ring-near,
+.sw-ring-close {
+  background: transparent;
+  border-radius: 50%;
+  border: 2px dashed #ff5a52;
+}
+
+.sw-ring-close {
+  border-color: #ffc400;
+}
+
+.sw-line {
+  width: 20px;
+  height: 3px;
+  border-radius: 2px;
+  background: #39ff88;
+}
+
+.sw-car {
+  width: 9px;
+  height: 14px;
+  border-radius: 1px;
+  border: 2px solid #8ab4ff;
+  background: rgba(138, 180, 255, 0.25);
+}
+
+/* readouts: one card per direction, the distance as big as the
+   plot labels are small, so it reads from a step back */
+.sector-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.sector {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 0;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.sector-k {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.sector-v {
+  font-size: 28px;
+  font-weight: 800;
+  line-height: 1.05;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.sector-trend {
+  align-self: flex-start;
+  padding: 2px 8px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--muted);
+  background: var(--surface-3);
+  max-width: 100%;
+}
+
+.sector-trend:empty {
+  visibility: hidden;
+}
+
+.band-near  { color: var(--bad-ink); }
+
+.band-close { color: var(--warn-ink); }
+
+.band-far   { color: var(--ok-ink); }
+
+.band-clear { color: var(--muted); }
+
+.sector-trend.trend-closer {
+  color: var(--warn-ink);
+  background: var(--degraded-soft);
+}
+
+.sector-trend.trend-farther {
+  color: var(--ok-ink);
+  background: var(--healthy-soft);
+}
+
+@media (max-width: 800px) {
+
+  .sector-grid {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .lidar-toolbar {
+    flex-wrap: wrap;
+    justify-content: flex-start;
+  }
+
+  .range-switch button {
+    min-height: 36px;
+    font-size: 13px;
+  }
+
+  /* phones: LiDAR toolbar as a small form — each label over its
+   control, the range steps across the full width */
+  .lidar-toolbar {
+    row-gap: 6px;
+  }
+
+  .lidar-toolbar-label {
+    flex: 1 1 100%;
+  }
+
+  .lidar-toolbar-label:not(:first-child) {
+    margin-top: 4px;
+  }
+
+  .lidar-range-group {
+    flex: 1 1 100%;
+    row-gap: 6px;
+    margin-top: 4px;
+  }
+
+  /* Detailed: the view switch across, Select beams and Sweep side by side */
+  .lidar-card[data-view="detailed"] .lidar-toolbar .view-switch {
+    flex: 1 1 100%;
+  }
+
+  .lidar-card[data-view="detailed"] .lidar-toolbar .view-switch button {
+    flex: 1;
+  }
+
+  .lidar-card[data-view="detailed"] .lidar-toolbar .select-toggle {
+    flex: 1 1 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    margin: 0;
+  }
+
+  .lidar-toolbar .range-switch:not(.view-switch) {
+    flex: 1 1 100%;
+  }
+
+  .lidar-toolbar .range-switch:not(.view-switch) button {
+    flex: 1;
+    padding: 4px 0;
+  }
+}
+
+.range-switch button,
+.radar-center {
+  transition: background-color .15s ease, border-color .15s ease,
+              color .15s ease, transform .08s ease;
+}
+
+@media (hover: hover) {
+
+  .range-switch button:hover:not([aria-pressed="true"]) {
+    background: var(--panel-soft);
+    color: var(--text);
+  }
+}
+
+/* inside a segmented switch the ring would be clipped by its edge */
+.range-switch button:focus-visible {
+  outline-offset: -3px;
+}
+
+.lidar-howto.in-fold {
+  margin: 6px 0 0;
+  text-align: left;
+}
+
+.radar-center {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lidar-card[data-view="detailed"] .sector-grid {
+  display: none;
+}
+
+/* the Detailed key, in the radar's own colours */
+.sw-hit        { width: 6px; height: 6px; border-radius: 1px; background: #4ADE80; }
+
+.sw-obj-warn   { width: 10px; height: 10px; border-radius: 50%; background: #F59E0B; }
+
+.sw-obj-danger { width: 10px; height: 10px; border-radius: 50%; background: #EF4444; }
+
+.sw-blindarea  { background: rgba(239, 68, 68, .25); border: 1px solid rgba(239, 68, 68, .5); }
+
+/* ------------------------------------------------------------------
+   6. LIDAR CARD: DETAILED VIEW (THE RADAR PANEL)
+   ------------------------------------------------------------------ */
+
+.radar-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  min-width: 0;
+}
+
+.radar-banner {
+  padding: 14px 16px;
+  border-radius: 10px;
+  font-size: 20px;
+  font-weight: 900;
+  letter-spacing: .02em;
+  text-align: center;
+  color: #fff;
+  background: var(--unknown);
+}
+
+.radar-banner.clear  { background: #16A34A; }
+
+.radar-banner.danger { background: #EF4444; }
+
+.radar-sub {
+  margin-top: 4px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+
+.radar-sectors,
+.radar-objects {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.radar-sector {
+  display: grid;
+  grid-template-columns: 1fr auto 76px;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 10px;
+  border-left: 4px solid var(--unknown);
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 14px;
+}
+
+.radar-sector .rs-dist {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.radar-sector .rs-status {
+  font-size: 11.5px;
+  font-weight: 800;
+  letter-spacing: .05em;
+  text-align: right;
+}
+
+.radar-sector.clear  { border-left-color: #22C55E; }
+
+.radar-sector.warn   { border-left-color: #F59E0B; background: var(--degraded-soft); }
+
+.radar-sector.clear .rs-status  { color: var(--ok-ink); }
+
+.radar-sector.warn .rs-status,
+.radar-sector.warn .rs-dist     { color: var(--warn-ink); }
+
+.radar-sector.danger .rs-status,
+.radar-sector.danger .rs-dist   { color: var(--bad-ink); }
+
+.radar-objects li.warn b   { color: var(--warn-ink); }
+
+.radar-objects li.danger b { color: var(--bad-ink); }
+
+.radar-objects li.none     { color: var(--muted); }
+
+.radar-foot {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.radar-legend-note {
+  color: var(--muted);
+}
+
+.radar-mask {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.radar-mask input {
+  padding: 7px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+  font-family: monospace;
+  font-size: 13px;
+}
+
+@media (max-width: 900px) {
+
+  .radar-mask input {
+    font-size: 16px;
+    min-height: 44px;
+  }
+}
+
+/* Detailed shows the radar panel, Lines the sector readouts */
+.lidar-card[data-view="lines"] .radar-panel {
+  display: none;
+}
+
+.lidar-card .radar-panel {
+  margin-top: 4px;
+}
+
+/* ------------------------------------------------------------------
+   7. BEAM SELECT
+   ------------------------------------------------------------------ */
+
+.lidar-toolbar .select-toggle {
+  margin-right: auto;
+}
+
+/* Sweep: the radar's line, so Detailed only; it sits beside Select beams */
+[data-view="lines"] .sweep-toggle {
+  display: none;
+}
+
+.lidar-card[data-view="detailed"] .lidar-toolbar [data-beam-select] {
+  margin-right: 0;
+}
+
+.select-toggle {
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text-2);
+  padding: 4px 10px;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.beam-select {
+  container-type: inline-size;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel-soft);
+}
+
+.beam-select[hidden],
+.beam-readout[hidden] {
+  display: none;
+}
+
+.beam-select-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 10px;
+}
+
+.beam-select-controls + .beam-select-controls {
+  margin-top: 8px;
+}
+
+.beam-select-controls label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+.beam-select-controls input {
+  width: 70px;
+  padding: 5px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+
+.beam-select-controls .check-btn {
+  padding: 5px 12px;
+  font-size: 13px;
+}
+
+.beam-hint {
+  margin-top: 8px;
+  font-size: 12.5px;
+  color: var(--muted);
+}
+
+/* beams and angles on the first row, the three distances under them */
+.beam-readout {
+  display: grid;
+  grid-template-columns: repeat(6, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin-top: 10px;
+}
+
+.beam-readout > div {
+  grid-column: span 2;
+  min-width: 0;
+}
+
+.beam-readout > div:nth-child(-n + 2) {
+  grid-column: span 3;
+}
+
+@container (max-width: 520px) {
+
+  /* narrow (the viewer's card, phones): indexes and angles each get a
+   whole row, so "98.3° right → 101.7° left" never breaks in two */
+  .beam-readout > div:nth-child(-n + 2) {
+    grid-column: 1 / -1;
+  }
+}
+
+.beam-readout .v {
+  display: block;
+  margin-top: 3px;
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+@media (max-width: 800px) {
+
+  .select-toggle {
+    min-height: 36px;
+    padding: 6px 12px;
+    font-size: 13px;
+  }
+
+  .lidar-toolbar .select-toggle {
+    margin: 0 0 0 auto;
+  }
+}
+
+.select-toggle {
+  transition: background-color .15s ease, border-color .15s ease,
+              color .15s ease, transform .08s ease;
+}
+
+@media (hover: hover) {
+
+  .select-toggle:hover:not([aria-pressed="true"]) {
+    border-color: var(--orange);
+    color: var(--text);
+    background: var(--panel-soft);
+  }
+}
+
+.select-toggle:active {
+  transform: translateY(1px);
+}
+
+.select-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ------------------------------------------------------------------
+   Detailed view panel: numbered objects, matching the plot's tags
+   ------------------------------------------------------------------ */
+
+.radar-objects li {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+
+.ro-num {
+  flex: none;
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 5px;
+  border-radius: 6px;
+  background: #1f2a3c;
+  color: #fff;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.radar-objects li.warn .ro-num   { background: #F59E0B; color: #1a1400; }
+.radar-objects li.danger .ro-num { background: #EF4444; }
+
+.ro-approach {
+  font-style: normal;
+  font-weight: 700;
+  color: var(--warn-ink);
+  white-space: nowrap;
+}
+
+/* ------------------------------------------------------------------
+   Tile details: the card for a Temperature / Network row (metrics.js)
+   ------------------------------------------------------------------ */
+
+.metric-row.has-tip > * {
+  cursor: help;
+}
+
+@media (hover: hover) {
+  .metric-row.has-tip > :hover,
+  .metric-row.has-tip > :hover ~ * {
+    filter: brightness(1.15);
+  }
+}
+
+.tile-tip {
+  position: fixed;
+  z-index: 2000;
+  max-width: min(340px, calc(100vw - 16px));
+  padding: 10px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .28);
+  pointer-events: none;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.tile-tip[hidden] {
+  display: none;
+}
+
+.tt-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 14px;
+  margin-bottom: 5px;
+}
+
+.tt-name {
+  font-weight: 800;
+}
+
+.tt-value {
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.tt-value.g-ok      { color: var(--ok-ink); }
+.tt-value.g-warn    { color: var(--warn-ink); }
+.tt-value.g-bad     { color: var(--bad-ink); }
+.tt-value.g-unknown { color: var(--muted); }
+
+.tt-text {
+  color: var(--text-2);
+}

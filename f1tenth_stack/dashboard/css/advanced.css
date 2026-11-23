@@ -1,0 +1,717 @@
+/* ==================================================================
+   ADVANCED.CSS
+   Advanced tab: needs attention, section links, robot system, nodes, diagnostics, topics, checks, warnings log.
+
+   Sections:
+      1. Layout and section links
+      2. Robot system
+      3. Nodes, diagnostics and topic tables
+      4. On-demand checks
+      5. Warnings log
+   ================================================================== */
+
+/* ------------------------------------------------------------------
+   1. LAYOUT AND SECTION LINKS
+   ------------------------------------------------------------------ */
+
+.advanced-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 18px;
+  margin-top: 24px;
+}
+
+.span-2 {
+  grid-column: 1 / -1;
+}
+
+.card-body {
+  padding: 13px;
+}
+
+.advanced-card {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.advanced-card h3 {
+  background: var(--panel-soft);
+  margin: 0;
+  padding: 11px 13px;
+  font-size: 15px;
+}
+
+.advanced-card h3 {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: center;
+}
+
+.attention {
+  margin-top: 22px;
+  padding: 14px 18px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+}
+
+.attention h2 {
+  margin: 0 0 8px;
+  font-size: 17px;
+}
+
+.attention-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.attention-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 7px 0;
+  border-top: 1px solid var(--border-soft);
+  font-size: 13.5px;
+}
+
+.attention-list li:first-child {
+  border-top: 0;
+}
+
+.attention-list .what {
+  font-weight: 700;
+  min-width: 150px;
+}
+
+.attention-list .link-btn {
+  flex: none;
+}
+
+.attention-list li.all-clear {
+  color: var(--ok-ink);
+  font-weight: 700;
+}
+
+.jump-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.jump-nav a {
+  padding: 5px 12px;
+  border: 1px solid var(--border);
+  border-radius: 99px;
+  font-size: 13px;
+  color: var(--text-2);
+  text-decoration: none;
+  background: var(--panel);
+}
+
+.jump-nav a:hover {
+  border-color: var(--orange);
+  color: var(--text);
+}
+
+.advanced-card {
+  scroll-margin-top: 70px;
+}
+
+.card-intro {
+  padding: 9px 13px;
+  font-size: 12.5px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border-soft);
+}
+
+@media (max-width: 800px) {
+
+  .attention-list li {
+    flex-wrap: wrap;
+  }
+
+  .advanced-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .advanced-card {
+    min-width: 0;
+  }
+
+  /* advanced */
+  .attention {
+    padding: 12px 14px;
+  }
+
+  .attention-list .what {
+    min-width: 0;
+    flex: 1 1 100%;
+  }
+
+  .jump-nav {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+  }
+
+  .jump-nav a {
+    white-space: nowrap;
+    padding: 9px 14px;
+  }
+
+  .advanced-card {
+    scroll-margin-top: 190px;
+  }
+
+  .advanced-card h3 {
+    flex-wrap: wrap;
+    row-gap: 2px;
+  }
+}
+
+.jump-nav a {
+  transition: background-color .15s ease, border-color .15s ease,
+              color .15s ease, transform .08s ease;
+}
+
+.jump-nav a:active {
+  transform: translateY(1px);
+}
+
+.graph-card .card-body {
+  padding: 13px;
+}
+
+.graph-card .graph-sub:first-of-type {
+  margin-top: 18px;
+}
+
+.attention-list li.all-clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+/* ------------------------------------------------------------------
+   2. ROBOT SYSTEM
+   ------------------------------------------------------------------ */
+
+.sys-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(118px, 1fr));
+  gap: 1px;
+  background: var(--border);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sys-tile {
+  background: var(--panel);
+  padding: 10px 11px;
+  min-width: 0;
+}
+
+.sys-tile .k {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: .05em;
+}
+
+/* The headline sits in a fixed slot, so anything past
+   HEAD_MAX_CHARS characters has to step down a size rather
+   than break mid-word. */
+.sys-tile .v {
+  display: block;
+  margin-top: 6px;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.1;
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.sys-tile .v.small {
+  font-size: 15px;
+}
+
+.sys-tile .n {
+  display: block;
+  margin-top: 4px;
+  font-size: 11px;
+  color: var(--muted);
+}
+
+.sys-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.sys-row {
+  display: grid;
+  grid-template-columns: 12px 130px 1fr;
+  gap: 4px 12px;
+  padding: 11px 13px;
+  border-bottom: 1px solid var(--border-soft);
+  align-items: baseline;
+}
+
+.sys-row:last-child {
+  border-bottom: 0;
+}
+
+.sys-row .dot {
+  align-self: center;
+}
+
+.sys-name {
+  font-weight: 800;
+  font-size: 14px;
+}
+
+.sys-msg {
+  font-size: 13px;
+}
+
+.sys-values {
+  grid-column: 3;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  margin-top: 2px;
+}
+
+.sys-values b {
+  font-weight: 400;
+  color: var(--muted);
+}
+
+.sys-explain {
+  grid-column: 3;
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--muted);
+}
+
+@media (max-width: 700px) {
+
+  .sys-explain {
+    grid-column: 1 / -1;
+  }
+}
+
+.lvl-ok   { color: var(--ok-ink); font-weight: 700; }
+
+.lvl-warn { color: var(--warn-ink); font-weight: 700; }
+
+.lvl-bad  { color: var(--bad-ink); font-weight: 700; }
+
+.lvl-unk  { color: var(--unk-ink); font-weight: 700; }
+
+@media (max-width: 800px) {
+
+  .sys-row {
+    grid-template-columns: 12px 1fr;
+  }
+
+  /* under the name, not in the dot's 12px column (one word a line) */
+  .sys-msg {
+    grid-column: 2;
+  }
+
+  .sys-values,
+  .sys-explain {
+    grid-column: 1 / -1;
+  }
+}
+
+/* ------------------------------------------------------------------
+   3. NODES, DIAGNOSTICS AND TOPIC TABLES
+   ------------------------------------------------------------------ */
+
+.scroll {
+  max-height: 330px;
+  overflow: auto;
+}
+
+.raw-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+
+.raw-table th,
+.raw-table td {
+  text-align: left;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.raw-table th {
+  background: var(--panel-soft);
+  color: var(--muted);
+}
+
+tr.topic-row {
+  cursor: pointer;
+}
+
+tr.topic-row:hover,
+tr.topic-row.open {
+  background: var(--panel-soft);
+}
+
+.caret {
+  display: inline-block;
+  width: 10px;
+  font-size: 9px;
+  color: var(--muted);
+  margin-right: 5px;
+  transition: transform .12s;
+}
+
+tr.topic-row.open .caret {
+  transform: rotate(90deg);
+  color: var(--orange);
+}
+
+tr.topic-detail > td {
+  padding: 0;
+  background: var(--panel-soft);
+}
+
+tr.topic-detail pre {
+  margin: 0;
+  padding: 9px 12px 11px 26px;
+  max-height: 300px;
+  overflow: auto;
+  font-size: 11px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.detail-meta {
+  padding: 7px 12px 0 26px;
+  font-family: monospace;
+  font-size: 10.5px;
+  color: var(--muted);
+}
+
+.why {
+  color: var(--muted);
+  font-size: 11px;
+  margin-top: 3px;
+  white-space: normal;
+  max-width: 28ch;
+}
+
+.sub-tag {
+  color: var(--orange);
+  font-size: 10px;
+  margin-left: 6px;
+  font-family: monospace;
+}
+
+.state-pill {
+  display: inline-block;
+  font-family: monospace;
+  font-size: 10.5px;
+  font-weight: 700;
+  padding: 2px 7px;
+  border-radius: 99px;
+  border: 1px solid currentColor;
+  white-space: nowrap;
+}
+
+.s-OK,
+.s-DRIVEN {
+  color: var(--ok-ink);
+}
+
+.s-SILENT,
+.s-STALE,
+.s-NOT_ADVERTISED,
+.s-NODE_DOWN,
+.s-MISSING {
+  color: var(--failed);
+}
+
+.s-SLOW {
+  color: var(--warn-ink);
+}
+
+.s-IDLE,
+.s-INPUT,
+.s-WAITING,
+.s-ABSENT,
+.s-UNKNOWN {
+  color: var(--muted);
+}
+
+.node-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  padding: 10px 12px;
+  color: var(--muted);
+  font-size: 12px;
+  align-items: center;
+}
+
+.node-chips span {
+  font-family: monospace;
+  font-size: 11px;
+  padding: 2px 7px;
+  border: 1px dashed var(--border);
+  border-radius: 99px;
+}
+
+.sys-values span {
+  font-family: monospace;
+  font-size: 11px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border-soft);
+  border-radius: 5px;
+  padding: 2px 6px;
+  color: var(--text-2);
+}
+
+.attention-list .why {
+  color: var(--text-2);
+  max-width: none;
+  margin: 0;
+  font-size: 13px;
+  flex: 1;
+}
+
+.table-tools {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 13px;
+  border-bottom: 1px solid var(--border-soft);
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.table-tools input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  padding: 6px 9px;
+  border: 1px solid var(--border-strong);
+  border-radius: 7px;
+  background: var(--panel);
+  color: var(--text);
+}
+
+.table-tools label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
+}
+
+@media (max-width: 800px) {
+
+  .table-tools input[type="search"] {
+    font-size: 16px; /* stops iOS zooming in on focus */
+    min-height: 44px;
+  }
+
+  .subsystem-table tbody td {
+    padding: 4px 0;
+  }
+
+  .table-tools {
+    flex-wrap: wrap;
+  }
+
+  .table-tools input[type="search"] {
+    flex: 1 1 100%;
+  }
+
+  .scroll {
+    max-height: 420px;
+  }
+
+  /* raw tables wrap instead of forcing a sideways swipe */
+  .raw-table {
+    font-size: 12.5px;
+  }
+
+  .raw-table th,
+  .raw-table td {
+    padding: 8px 6px;
+    overflow-wrap: anywhere;
+  }
+
+  .why {
+    max-width: none;
+  }
+}
+
+/* a table with no rows says so, instead of headers over a blank */
+.scroll[data-empty]:has(tbody:empty) thead {
+  display: none;
+}
+
+.scroll[data-empty]:has(tbody:empty)::after {
+  content: attr(data-empty);
+  display: block;
+  padding: 18px 14px;
+  color: var(--muted);
+  font-size: 13px;
+  text-align: center;
+}
+
+/* ------------------------------------------------------------------
+   4. ON-DEMAND CHECKS
+   ------------------------------------------------------------------ */
+
+.connection-box {
+  display: flex;
+  gap: 8px;
+  padding: 13px;
+}
+
+.connection-box input {
+  flex: 1;
+  min-width: 0;
+  border: 1px solid var(--border-strong);
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-family: monospace;
+}
+
+.connection-box button {
+  background: var(--panel);
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+}
+
+.check-row {
+  display: flex;
+  gap: 11px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.check-note {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.35;
+  max-width: 34ch;
+}
+
+.preset-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+
+.preset-row label {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--text-2);
+}
+
+.preset-row input {
+  width: 68px;
+  padding: 6px 8px;
+  border: 1px solid var(--border-strong);
+  border-radius: 6px;
+}
+
+/* `pre`, not `pre-wrap`: the report aligns its labels and
+   indents the fix command, and rewrapping destroys that. */
+#joyResult {
+  display: none;
+  margin: 12px 0 0;
+  padding: 11px 12px;
+  background: var(--panel-soft);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: monospace;
+  font-size: 11px;
+  line-height: 1.5;
+  white-space: pre;
+  overflow: auto;
+  max-height: 300px;
+}
+
+#joyResult.show {
+  display: block;
+}
+
+@media (max-width: 800px) {
+
+  .preset-row .check-btn {
+    flex: 1 1 calc(50% - 8px);
+    text-align: center;
+  }
+
+  .preset-row label {
+    flex: 1 1 40%;
+  }
+
+  .preset-row input {
+    width: 100%;
+    min-height: 44px;
+    font-size: 16px;
+  }
+
+  .check-note {
+    max-width: none;
+  }
+}
+
+/* ------------------------------------------------------------------
+   5. WARNINGS LOG
+   ------------------------------------------------------------------ */
+
+.log {
+  font-family: monospace;
+  font-size: 12px;
+  max-height: 300px;
+  overflow-y: auto;
+}
+
+.log-entry {
+  padding: 7px 10px;
+  border-bottom: 1px solid var(--border-soft);
+}
+
+.log-entry.warn {
+  color: var(--warn-ink);
+}
+
+.log-entry.error {
+  color: var(--bad-ink);
+}
+
+
+/* the second check under the first one's result */
+#joyResult ~ .check-row {
+  margin-top: 14px;
+}
+
+/* restarting the car's dashboard: set apart as the one that disrupts */
+.check-btn.restart-btn {
+  border-color: color-mix(in srgb, var(--failed) 55%, transparent);
+  color: var(--bad-ink);
+}

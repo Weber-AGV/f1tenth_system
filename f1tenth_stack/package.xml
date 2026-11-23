@@ -16,6 +16,14 @@
   <depend>ackermann_mux</depend>
   <depend>std_msgs</depend>
   <depend>nav2_bringup</depend>
+  <depend>rclpy</depend>
+  <depend>diagnostic_msgs</depend>
+  <depend>std_srvs</depend>
+  <depend>sensor_msgs</depend>
+  <!-- GStreamer streams the camera to the dashboard (gst-launch-1.0 in bringup_launch.py) -->
+  <exec_depend>gstreamer1.0-tools</exec_depend>
+  <exec_depend>gstreamer1.0-plugins-base</exec_depend>
+  <exec_depend>gstreamer1.0-plugins-good</exec_depend>
 
   <test_depend>ament_copyright</test_depend>
   <test_depend>ament_flake8</test_depend>

@@ -15,6 +15,9 @@ setup(
         (os.path.join('share', package_name, 'launch'), glob('launch/*.py')),
         (os.path.join('share', package_name, 'config'), glob('config/*.yaml')),
         (os.path.join('share', package_name, 'maps'), glob('maps/*')),
+        (os.path.join('share', package_name, 'dashboard'), glob('dashboard/*.html')),
+        (os.path.join('share', package_name, 'dashboard', 'css'), glob('dashboard/css/*.css')),
+        (os.path.join('share', package_name, 'dashboard', 'js'), glob('dashboard/js/*.js')),
     ],
     install_requires=['setuptools'],
     zip_safe=True,
@@ -27,7 +30,9 @@ setup(
         'console_scripts': [
             'throttle_interpolator = f1tenth_stack.throttle_interpolator:main',
             'tf_publisher = f1tenth_stack.tf_publisher:main',
-            'cmd_vel_to_ackermann = f1tenth_stack.cmd_vel_to_ackermann:main'
+            'cmd_vel_to_ackermann = f1tenth_stack.cmd_vel_to_ackermann:main',
+            'system_diagnostics = f1tenth_stack.system_diagnostics:main',
+            'camera_http = f1tenth_stack.camera_http:main'
         ],
     },
 )
